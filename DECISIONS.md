@@ -28,14 +28,14 @@ If you cannot fill in **Why**, there is no entry to write.
 **Why:** Both views presented invented values as real. A signed-in user with no key saw the literal in the "Publisher API Key" card with working reveal and copy buttons. The charts spread all-time totals through `Math.sin(i * 0.8)` and `Math.cos(i * 0.5)` and the tooltip reported the result per hour as "Requests" and "Revenue USDC"; the source comment read "Synthesize consistent timeline buckets". `GET /dashboard/:id` returns totals, a success rate (`status_code < 400`) and per-endpoint rows, with no time buckets and no 4xx/5xx split, so there is no series to draw. The review passed throughout: S1.1 listed `sk_test_` and `pk_live_` but not `pk_test_`, and S9.3 looks only for `Math.random`/`Date.now`. After the fix `grep -rn 'pk_test_' src` and `grep -rnE 'Math\.(sin|cos)' src` return nothing, `npm run verify` exits 0 and the review prints 15 passed, 0 failed, 0 unverified. A planted `'pk_test_planted'` literal produced 1 FAIL; removing it returned 15/0/0.
 **Rejected:** a new key-issuing endpoint (the existing POST already returns the key); keeping a chart fed by synthesized buckets under a "sample" label (the same figure that misled, with a caption); a `Math.sin` grep in the review (a heuristic for one spelling of the bug).
 **Files:** `src/components/dashboard/SettingsView.tsx`, `src/components/dashboard/AnalyticsView.tsx`, `src/api/client.ts`, `.env.example`, `scripts/security-review.sh`, `AGENTS.md`, `deploy.md`, `DECISIONS.md`.
-**Ref:** uncommitted.
+**Ref:** a372bac.
 
 ## 2026-09-20 — Recorded after the fact: commit 6b0a991 removed demo mode and the access lock
 
 **Decided:** This entry records a reversal that shipped without one. Commit `6b0a991` deleted `DEMO_STATS`, the `/dashboard/demo` preview, the "Explore Demo Dashboard" button and the "Dashboard Access Restricted" card, and added `ApisView`, `AnalyticsView` and `SettingsView`. `Dashboard.tsx` now registers a publisher for a signed-in user on first load instead of showing a lock screen. The entry below, "Dashboard access restriction unblocked", describes code that no longer exists.
 **Why:** An audit on 2026-09-20 found the log and the tree disagreeing: `grep -rn "DEMO_STATS\|Access Restricted\|Explore Demo" src/` returns nothing, and `git show --stat 6b0a991` lists 8 source files, +1169/−417, with `DECISIONS.md` untouched. The commit message gives the intent as "remove access restrictions, eliminate demo stats". The author should confirm or correct that reason when signing.
 **Files:** `DECISIONS.md` (the code change itself is commit `6b0a991`).
-**Ref:** uncommitted.
+**Ref:** a372bac.
 
 ## 2026-09-19 — Dashboard access restriction unblocked: 1-click register and demo fallback
 
