@@ -29,6 +29,7 @@ export interface PublisherInfo {
   company: string | null;
   website: string | null;
   status: string;
+  api_key?: string;
 }
 
 export interface SessionState {

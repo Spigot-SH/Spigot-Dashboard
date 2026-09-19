@@ -126,6 +126,8 @@ export interface DashboardEndpointRow {
   total_revenue?: number;
   latency?: number;
   avg_latency?: number;
+  api_name?: string;
+  api_slug?: string;
 }
 
 export interface DashboardTransactionRow {

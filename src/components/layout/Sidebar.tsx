@@ -31,9 +31,9 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId }) => {
     <aside className="w-64 bg-bg border-r border-border sticky top-16 h-[calc(100vh-64px)] flex flex-col py-6 px-4">
       <nav className="flex flex-col gap-1">
         {navItems.map(item => {
-          // usePathname is typed nullable because it has no value during prerender.
-          const isActive = item.exact
-            ? pathname === item.path
+          const isOverview = item.name === 'Overview';
+          const isActive = isOverview
+            ? pathname === item.path || pathname === '/dashboard'
             : Boolean(pathname?.startsWith(item.path));
 
           return (
