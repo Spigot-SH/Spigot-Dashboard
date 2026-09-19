@@ -22,6 +22,14 @@ If you cannot fill in **Why**, there is no entry to write.
 
 ---
 
+## 2026-09-20 — Dependencies to latest; TypeScript 6, `stellar-sdk` 17, eslint held at 9
+
+**Decided:** `typescript` `^5.9.3` to `^6.0.3`, `@stellar/stellar-sdk` 16 to `^17.1.0`, spec floors for `@x402/*` moved to `^2.26.0`. `eslint` stays on 9.
+**Why:** `npm install -D eslint@^10.11.0 @eslint/js@^10.0.1` fails with `ERESOLVE`: the latest `eslint-plugin-react` (7.37.5, peer `^9.7`), `eslint-plugin-import` (2.32.0, peer `^9`) and `eslint-plugin-jsx-a11y` (6.10.2, peer `^9`), all pulled in by `eslint-config-next`, stop at eslint 9. On TypeScript 6.0.3 and SDK 17.1.0, `npm run verify` exits 0 and the review prints 15 passed, 0 failed, 0 unverified. A read-only Horizon testnet call through SDK 17 returned the latest ledger, and the five symbols `freighterWallet.ts` imports are present. Not checked: a Freighter signing round trip, which needs a browser wallet.
+**Rejected:** `--legacy-peer-deps` for eslint 10 (linting through plugins that do not support the host is how false negatives start, the same reason TypeScript 7 was refused); `typescript@7` (`typescript-eslint` supports `<6.1.0`); `@types/node@26` (the runtime is Node 22).
+**Files:** `package.json`, `package-lock.json`, `DECISIONS.md`.
+**Ref:** uncommitted.
+
 ## 2026-09-20 — Settings and Analytics show only what the backend returned
 
 **Decided:** `SettingsView.tsx` no longer falls back to the literal `'pk_test_spigot_pub_default_key'`. With no key it shows "No API key yet." and a button that calls the existing `POST /publishers`, which is idempotent and returns `{ id, api_key }`. `AnalyticsView.tsx` lost both charts, the hover tooltip and the 24h/7d/30d toggle (440 lines to 188). The status card keeps one error row, "Errors (4xx and 5xx)", and the hardcoded `0.0%` 5xx row is gone. With zero requests the success rate reads "—", not a default 100%. `scripts/security-review.sh` S1.1 now includes `pk_test_`. `src/api/client.ts` lost the `NEXT_PUBLIC_BACKEND_URL` override: `BASE_URL` is the constant `'/api'`, so the first invariant in `AGENTS.md` can no longer be broken by configuration; the variable is gone from `.env.example` and `deploy.md`.
@@ -86,10 +94,11 @@ If you cannot fill in **Why**, there is no entry to write.
 
 ## Tried and rejected — do not re-propose
 
-| Idea                                                            | Why it is dead                                                                                                                                           | Ref                             |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Merging `stealth-ref/` web code into `src/`                     | Different stack (vanilla HTML vs Next); it is an idea source, not a dependency                                                                           | 2026-09-18                      |
-| Setting `NEXT_PUBLIC_BACKEND_URL` to reach the backend directly | Calls become cross-origin and the `SameSite=Lax` session cookie is dropped; sign-in looks fine and every later request is unauthenticated                | inherited from x402 `deploy.md` |
-| Treating `BACKEND_ORIGIN` as a runtime setting                  | `next start` reads rewrite targets from the build manifest; a restart with a new value still proxies to the old one                                      | 2026-09-19                      |
-| Drawing a traffic chart from totals shaped by a curve           | The backend returns no time buckets; the tooltip reported invented per-hour figures as measured. Draw a series only when `GET /dashboard/:id` serves one | 2026-09-20                      |
-| A placeholder API key literal as the last fallback              | It was displayed as the user's own key with working copy and reveal buttons. No key means an empty state                                                 | 2026-09-20                      |
+| Idea                                                                  | Why it is dead                                                                                                                                              | Ref                             |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Merging `stealth-ref/` web code into `src/`                           | Different stack (vanilla HTML vs Next); it is an idea source, not a dependency                                                                              | 2026-09-18                      |
+| Setting `NEXT_PUBLIC_BACKEND_URL` to reach the backend directly       | Calls become cross-origin and the `SameSite=Lax` session cookie is dropped; sign-in looks fine and every later request is unauthenticated                   | inherited from x402 `deploy.md` |
+| Treating `BACKEND_ORIGIN` as a runtime setting                        | `next start` reads rewrite targets from the build manifest; a restart with a new value still proxies to the old one                                         | 2026-09-19                      |
+| Drawing a traffic chart from totals shaped by a curve                 | The backend returns no time buckets; the tooltip reported invented per-hour figures as measured. Draw a series only when `GET /dashboard/:id` serves one    | 2026-09-20                      |
+| A placeholder API key literal as the last fallback                    | It was displayed as the user's own key with working copy and reveal buttons. No key means an empty state                                                    | 2026-09-20                      |
+| eslint 10 while `eslint-config-next` pulls plugins capped at eslint 9 | `npm install` fails with `ERESOLVE`; forcing it lints through unsupported plugins. Retry when `eslint-plugin-react`, `-import` and `-jsx-a11y` accept `^10` | 2026-09-20                      |
