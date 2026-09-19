@@ -19,6 +19,81 @@ import {
   setPublisherId,
 } from '../api/client';
 import SettlePanel from '../components/dashboard/SettlePanel';
+import { useAuth } from '../auth/AuthContext';
+
+const DEMO_STATS: DashboardStats = {
+  availableBalance: 1250.5,
+  pendingBalance: 142.3,
+  totalRequests: 48290,
+  successRate: 99.8,
+  endpoints: [
+    {
+      path: '/v1/models/gpt-4/chat',
+      method: 'POST',
+      request_count: 28400,
+      total_revenue: 710.0,
+      avg_latency: 245,
+    },
+    {
+      path: '/v1/embeddings',
+      method: 'POST',
+      request_count: 14350,
+      total_revenue: 143.5,
+      avg_latency: 85,
+    },
+    {
+      path: '/v1/images/generations',
+      method: 'POST',
+      request_count: 5540,
+      total_revenue: 397.0,
+      avg_latency: 1250,
+    },
+  ],
+  transactions: [
+    {
+      id: 'tx_demo_01',
+      tx_id: 'tx_demo_01c87102e3b1c9024',
+      amount: 0.05,
+      status: 'CONFIRMED',
+      created_at: '2026-09-19T10:30:00.000Z',
+    },
+    {
+      id: 'tx_demo_02',
+      tx_id: 'tx_demo_02f9482710385920a',
+      amount: 0.025,
+      status: 'CONFIRMED',
+      created_at: '2026-09-19T10:15:00.000Z',
+    },
+    {
+      id: 'tx_demo_03',
+      tx_id: 'tx_demo_03e1984271839201f',
+      amount: 0.1,
+      status: 'CONFIRMED',
+      created_at: '2026-09-19T09:50:00.000Z',
+    },
+  ],
+  health: {
+    uptime: 99.98,
+    avgLatency: 142,
+    status: 'ONLINE',
+  },
+  settlements: [
+    {
+      id: 'stl_demo_01',
+      tx_id: '0x3a8f902b1c9e8471629471928374619283746192837461928374619283746192',
+      amount: 850.0,
+      status: 'COMPLETED',
+      created_at: '2026-09-17T12:00:00.000Z',
+    },
+    {
+      id: 'stl_demo_02',
+      tx_id: '0x1928374619283746192837461928374619283746192837461928374619283746',
+      amount: 400.5,
+      status: 'COMPLETED',
+      created_at: '2026-09-10T12:00:00.000Z',
+    },
+  ],
+};
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -46,12 +121,45 @@ function settlementStatus(status: unknown): 'PUBLISHED' | 'PENDING' | 'OFFLINE' 
 
 const Dashboard: React.FC<DashboardProps> = ({ publisherId }) => {
   const router = useRouter();
+  const { user, publisher, refresh, signedIn } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
+  const [registering, setRegistering] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const handleEnableDemo = () => {
+    setStats(DEMO_STATS);
+    setIsDemo(true);
+    setAccessDenied(false);
+    setLoading(false);
+  };
+
+  const handleQuickRegister = async () => {
+    setRegistering(true);
+    try {
+      const name = user?.email ? user.email.split('@')[0] : 'My Publisher';
+      const pub = await apiClient.registerPublisher({ name });
+      if (pub.id) {
+        setPublisherId(pub.id);
+      }
+      await refresh();
+      setRefreshKey(k => k + 1);
+    } catch (err: unknown) {
+      console.warn('1-click registration failed, falling back to demo mode:', err);
+      handleEnableDemo();
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   useEffect(() => {
+    if (publisherId === 'demo') {
+      handleEnableDemo();
+      return;
+    }
+
     const fetchStats = async () => {
       try {
         const targetId = publisherId || 'active';
@@ -84,9 +192,11 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId }) => {
           settlements: Array.isArray(raw.settlements) ? raw.settlements : [],
         };
         setStats(mapped);
+        setIsDemo(false);
         setAccessDenied(false);
         setLoading(false);
-      } catch {
+      } catch (err: unknown) {
+        console.warn('Dashboard fetch failed:', err);
         setAccessDenied(true);
         setLoading(false);
       }
@@ -105,10 +215,21 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId }) => {
           <h2 className="text-2xl mb-3 text-main">Dashboard Access Restricted</h2>
           <p className="text-muted mb-8 max-w-md">
             You can only view your own publisher dashboard. Please register as a publisher to view
-            your API performance and revenue metrics.
+            your API performance and revenue metrics, or explore the dashboard in demo mode.
           </p>
-          <div className="flex gap-4">
-            <Button variant="primary" onClick={() => router.push('/onboarding')}>
+          <div className="flex flex-wrap gap-4 justify-center">
+            {signedIn && !publisher && (
+              <Button variant="primary" disabled={registering} onClick={handleQuickRegister}>
+                {registering ? 'Registering...' : '1-Click Register as Publisher'}
+              </Button>
+            )}
+            <Button
+              variant={signedIn && !publisher ? 'secondary' : 'primary'}
+              onClick={handleEnableDemo}
+            >
+              Explore Demo Dashboard
+            </Button>
+            <Button variant="secondary" onClick={() => router.push('/onboarding')}>
               Publish API & Register
             </Button>
             <Button variant="secondary" onClick={() => router.push('/')}>
@@ -140,6 +261,23 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId }) => {
 
       <div className="flex-1 p-8 overflow-y-auto h-[calc(100vh-64px)]">
         <div className="max-w-[1400px] mx-auto">
+          {isDemo && (
+            <div className="mb-6 p-4 rounded-lg bg-panel border border-accent/30 flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <span className="px-2 py-0.5 rounded text-xs bg-accent text-bg font-medium uppercase tracking-wider">
+                  Demo Mode
+                </span>
+                <span className="text-sm text-main">
+                  You are viewing sample metrics. Register as a publisher to view live API traffic
+                  and revenue.
+                </span>
+              </div>
+              <Button variant="primary" size="sm" onClick={() => router.push('/onboarding')}>
+                Register as Publisher
+              </Button>
+            </div>
+          )}
+
           <div className="flex justify-between items-end mb-8">
             <div>
               <h1 className="text-3xl mb-1 text-accent">Publisher Dashboard</h1>

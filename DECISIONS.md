@@ -22,6 +22,14 @@ If you cannot fill in **Why**, there is no entry to write.
 
 ---
 
+## 2026-09-19 — Dashboard access restriction unblocked: 1-click register and demo fallback
+
+**Decided:** Added `src/app/dashboard/page.tsx` resolving `/dashboard` to `/dashboard/active`. In `src/views/Dashboard.tsx`, added demo dashboard preview mode (`DEMO_STATS`, `/dashboard/demo`), an "Explore Demo Dashboard" button, and a 1-click "Register as Publisher" action on the access restricted card for signed-in users. Added `credentials: 'include'` to `apiClient.registerPublisher`.
+**Why:** Unregistered or offline visitors to `/dashboard` were hit with an unskippable "Dashboard Access Restricted" lock screen requiring a 10-step onboarding process, while `/dashboard` alone returned a 404. On demo mode, users can inspect endpoint metrics, balances, settlement history, and health stats without full on-chain onboarding.
+**Rejected:** Silently showing demo stats without a banner (confuses real live data with demo figures; banner makes mode explicit).
+**Files:** `src/app/dashboard/page.tsx`, `src/views/Dashboard.tsx`, `src/api/client.ts`, `DECISIONS.md`.
+**Ref:** uncommitted.
+
 ## 2026-09-19 — Lint and format work again; TypeScript aligned with the Website at 5.8
 
 **Decided:** Added `eslint.config.mjs`, `.prettierrc.json`, `.prettierignore` (same rules as `Spigot-Website`, with `stealth-ref/` and `local/` ignored), the dev dependencies they need, and `format`, `format:check`, `lint:fix` and `verify` scripts. `typescript` moves from `^7.0.2` to `^5.8.2`.

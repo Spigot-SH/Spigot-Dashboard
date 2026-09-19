@@ -3,6 +3,9 @@
   "private": true,
   "license": "UNLICENSED",
   "version": "0.0.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev -p 5173",
     "build": "next build",

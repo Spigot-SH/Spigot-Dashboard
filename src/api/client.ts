@@ -255,7 +255,8 @@ export const apiClient = {
   async registerPublisher(data: Partial<Publisher>): Promise<Publisher> {
     const res = await fetch(`${BASE_URL}/publishers`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to register publisher');
