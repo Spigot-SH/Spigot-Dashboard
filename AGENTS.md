@@ -25,7 +25,7 @@ Read **[DECISIONS.md](DECISIONS.md)** before proposing anything.
 npm install                  # inside this repo only
 npm run verify               # format:check → lint → typecheck → build. Must exit 0
 scripts/security-review.sh   # UI security + silent-failure checks; run after a build. 0 FAIL, 0 UNVERIFIED
-npm run dev                  # :5173; proxies /api, /x402, /nanopay, /pay to BACKEND_ORIGIN (default http://127.0.0.1:4402)
+npm run dev                  # :5173; proxies /api and /x402 to BACKEND_ORIGIN (default http://127.0.0.1:4402)
 ```
 
 Never run `npm install` in the mother folder. Each Spigot repo installs on its own.
@@ -34,7 +34,7 @@ Never run `npm install` in the mother folder. Each Spigot repo installs on its o
 
 - **The browser only ever talks to this origin.** `next.config.ts` rewrites API paths to
   `BACKEND_ORIGIN` server-side, which is what keeps the httpOnly `SameSite=Lax` session cookie
-  working. Never set or introduce `NEXT_PUBLIC_BACKEND_URL` in a deploy.
+  working. Never reintroduce a browser-side backend URL (`NEXT_PUBLIC_BACKEND_URL` was removed).
 - **Only `NEXT_PUBLIC_*` variables reach the browser, and they are public.** No secret goes in one.
 - `NEXT_PUBLIC_ALGORAND_NETWORK_PROFILE` must match the backend profile (`testnet` in alpha).
 - `next/image` remote hosts are an explicit allowlist. Do not widen it to a wildcard.

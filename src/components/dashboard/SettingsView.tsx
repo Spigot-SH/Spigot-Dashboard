@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Card } from '../common/Card';
-import { getApiKey, getPublisherId } from '../../api/client';
+import { apiClient, getApiKey, getPublisherId, setApiKey, setPublisherId } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { Copy, Check, Eye, EyeOff } from 'lucide-react';
 
@@ -11,11 +11,14 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
-  const { user, publisher } = useAuth();
+  const { user, publisher, refresh } = useAuth();
   const [showKey, setShowKey] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [apiKey, setApiKeyState] = useState<string | null>(() => getApiKey());
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
-  const currentApiKey = getApiKey() || publisher?.api_key || 'pk_test_spigot_pub_default_key';
+  const currentApiKey = apiKey || publisher?.api_key;
   const effectivePubId = publisher?.id || getPublisherId() || publisherId || 'active';
   const gatewayUrl =
     process.env.NEXT_PUBLIC_GATEWAY_URL ||
@@ -25,6 +28,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const name = user?.email ? user.email.split('@')[0] : 'My Publisher';
+      const result = await apiClient.registerPublisher({ name });
+      if (!result.api_key || !result.id) throw new Error('Server returned no key');
+      setApiKey(result.api_key);
+      setPublisherId(result.id);
+      setApiKeyState(result.api_key);
+      await refresh();
+    } catch (e: unknown) {
+      setGenError(e instanceof Error ? e.message : 'Could not generate a key');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
@@ -87,31 +108,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
           This key is used by the <code>spigot</code> CLI and SDKs to manage endpoints, upload
           OpenAPI specifications, and trigger settlements programmatically.
         </p>
-        <div className="flex items-center gap-2">
-          <div className="font-mono text-xs text-main bg-panel px-3 py-2 rounded-md border border-border flex-1 select-all">
-            {showKey ? currentApiKey : '••••••••••••••••••••••••••••••••••••••••••••'}
+        {currentApiKey ? (
+          <div className="flex items-center gap-2">
+            <div className="font-mono text-xs text-main bg-panel px-3 py-2 rounded-md border border-border flex-1 select-all">
+              {showKey ? currentApiKey : '••••••••••••••••••••••••••••••••••••••••••••'}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="p-2 rounded hover:bg-panel-hover text-muted hover:text-main cursor-pointer"
+              title={showKey ? 'Hide key' : 'Reveal key'}
+            >
+              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCopy('apiKey', currentApiKey)}
+              className="p-2 rounded hover:bg-panel-hover text-muted hover:text-main cursor-pointer"
+              title="Copy API Key"
+            >
+              {copiedField === 'apiKey' ? (
+                <Check size={16} className="text-success" />
+              ) : (
+                <Copy size={16} />
+              )}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowKey(!showKey)}
-            className="p-2 rounded hover:bg-panel-hover text-muted hover:text-main cursor-pointer"
-            title={showKey ? 'Hide key' : 'Reveal key'}
-          >
-            {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleCopy('apiKey', currentApiKey)}
-            className="p-2 rounded hover:bg-panel-hover text-muted hover:text-main cursor-pointer"
-            title="Copy API Key"
-          >
-            {copiedField === 'apiKey' ? (
-              <Check size={16} className="text-success" />
-            ) : (
-              <Copy size={16} />
-            )}
-          </button>
-        </div>
+        ) : (
+          <div>
+            <p className="text-sm text-muted mb-3">No API key yet.</p>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating}
+              className="px-3 py-2 rounded-md border border-border bg-panel text-main text-sm"
+            >
+              {generating ? 'Generating...' : 'Generate API key'}
+            </button>
+            {genError ? <p className="text-sm text-error mt-2">{genError}</p> : null}
+          </div>
+        )}
       </Card>
 
       {/* Settlement & Payout */}

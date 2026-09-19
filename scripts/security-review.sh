@@ -87,7 +87,7 @@ expect_empty "S1.1-hardcoded-name" "no credential-named literal in source" \
   bash -c "set -o pipefail; grep -rnE \"(mnemonic|api_?key|secret|passwd|password|token|credential|_KEY|PRIVATE_KEY)[[:space:]]*[:=][[:space:]]*['\\\"][A-Za-z0-9+/=_-]{16,}\" src --include='*.ts' --include='*.tsx' --include='*.mjs' 2>/dev/null | grep -v 'process\.env' | grep -vi 'storage_key' | grep -v '\.example' | grep -vE ':[0-9]+:[[:space:]]*(\*|//)'"
 
 expect_empty "S1.1-hardcoded-shape" "no provider-shaped token literal in source" \
-  bash -c "set -o pipefail; grep -rnE \"['\\\"](sk_live_|sk_test_|pk_live_|rk_live_|AKIA[0-9A-Z]{16}|ghp_|gho_|github_pat_|xox[baprs]-|re_[A-Za-z0-9]{16}|AIza[0-9A-Za-z_-]{35})\" src --include='*.ts' --include='*.tsx' --include='*.mjs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*(\*|//)'"
+  bash -c "set -o pipefail; grep -rnE \"['\\\"](sk_live_|sk_test_|pk_live_|pk_test_|rk_live_|AKIA[0-9A-Z]{16}|ghp_|gho_|github_pat_|xox[baprs]-|re_[A-Za-z0-9]{16}|AIza[0-9A-Za-z_-]{35})\" src --include='*.ts' --include='*.tsx' --include='*.mjs' 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*(\*|//)'"
 
 # 25 space-separated lowercase words in a quoted string is an Algorand mnemonic.
 expect_empty "S1.1-mnemonic-shape" "no 25-word mnemonic literal in source" \

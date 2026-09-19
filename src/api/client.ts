@@ -1,17 +1,10 @@
 /**
- * Default to the relative '/api', which next.config.ts rewrites to the Express backend.
+ * Always the relative '/api', which next.config.ts rewrites to the Express backend.
  *
- * Keeping it same-origin is what lets the httpOnly session cookie work: it is set SameSite=Lax
- * by the backend, so a cross-origin XHR would not send it. Only override this if the browser
- * must reach the API on a different host, and expect to loosen the cookie policy if you do.
+ * Same-origin is what lets the httpOnly session cookie work: the backend sets it SameSite=Lax,
+ * so a cross-origin XHR would not send it. There is deliberately no override.
  */
-const CONFIGURED_BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL;
-
-export const BASE_URL = CONFIGURED_BACKEND
-  ? CONFIGURED_BACKEND.endsWith('/api')
-    ? CONFIGURED_BACKEND
-    : `${CONFIGURED_BACKEND}/api`
-  : '/api';
+export const BASE_URL = '/api';
 const API_KEY_STORAGE_KEY = 'x402_api_key';
 const PUBLISHER_ID_STORAGE_KEY = 'x402_publisher_id';
 
