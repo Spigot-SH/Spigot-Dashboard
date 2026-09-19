@@ -1,0 +1,40 @@
+# Content
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/content`
+
+The words are part of the system. A component with improvised copy is as inconsistent as one with improvised colour.
+
+## The site does not name the payment rail
+
+These appear nowhere in user-facing copy, metadata, titles or alt text:
+
+`Algorand` · `blockchain` · `crypto` · `stablecoin` · `USDC` · `wallet` · `on-chain` · `web3` · `micropayment` · `gas`
+
+This is positioning, not squeamishness. The audience is a developer who wants an API call to work. The settlement mechanism is an implementation detail that happens to be excellent — leading with it filters out everyone who is not already crypto-native, which is most of the market.
+
+| Instead of | Say |
+| --- | --- |
+| Settles in USDC on Algorand | Metered per request |
+| No wallet needed | No signup, no subscription |
+| Stream micropayments | Pay for exactly what you use |
+| On-chain settlement | Every call is metered and receipted |
+
+Code identifiers are out of scope — `usdcAssetId` is not copy. The ban is on what a reader sees.
+
+## Voice
+
+| Rule | Example |
+| --- | --- |
+| Lead with the mechanism, not the adjective | "Settles in ~4 seconds" beats "lightning fast" |
+| Numbers over claims | If you cannot source a number, cut the sentence |
+| One idea per paragraph | The reader is scanning, not reading |
+| Second person for publishers | "Sell your API by the call" |
+
+## Never
+
+Invented customers, logos, testimonials or usage numbers. Performance claims without a measurement. Any implication of production readiness while the badge says Testnet. Structured data for things not on the page.
+
+> **EMPTY STATES ARE COPY, NOT CHROME**
+>
+> "No APIs published yet" and "No calls in this period" are different situations and get different words and different actions. "No data" is not an empty state.

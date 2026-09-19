@@ -1,0 +1,13 @@
+# Railway service for this repo. Root Directory stays blank: the app is at the repo root.
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm ci && npm run build"
+
+[deploy]
+# Next runs as a Node server because next.config.ts rewrites /api and /x402 to the backend.
+# That keeps the browser on one origin, so the httpOnly SameSite=Lax session cookie is sent on
+# every API call. Set BACKEND_ORIGIN to the backend service URL (see deploy.md).
+startCommand = "npm run start"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"

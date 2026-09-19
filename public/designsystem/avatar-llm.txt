@@ -1,0 +1,42 @@
+# Avatar
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/avatar`
+
+An uploaded image when there is one; a 5×5 dot grid seeded on the name and the date the entity was created when there is not. One of only two places in this system where `rounded-full` is permitted.
+
+## Sizes & stack
+
+_Rendered example._
+
+```
+28px default, 40px large. 5x5 dot grid mirrored down the centre.
+
+Seed = FNV-1a of `name|createdAt`. The creation date is stored and passed in,
+never read from the clock: two publishers called Acme then differ, and each
+one keeps the same avatar forever.
+
+<Avatar name="Acme" src={logoUrl} seed={createdAt} />
+
+One hue per avatar from the CATEGORICAL ramp, with a second slice of the hash
+varying the weight. Categorical and not semantic, because an identity is a
+category and never a health state.
+```
+
+## When to use
+
+- To identify a person, publisher or team in a row or a header.
+
+## Behaviour
+
+- Image first. The grid is the fallback, not the default, and a broken or slow URL falls back to it rather than to a broken-image glyph, so a dead link degrades to something deliberate instead of something that looks like a bug.
+- Pattern first, hue second. Read the hue alone and two people can look alike; read the pattern and they never do. That ordering is what keeps it safe at 28px, where the grid is legible and the tint is barely a suggestion.
+- The seed is stored, never computed at render. Reading the clock here would draw a different avatar on the server than in the browser, which React reports as a hydration mismatch.
+
+## Content
+
+- Pass the full name, not initials and not a truncation. It is both the seed and the accessible name, and shortening it collides more often.
+
+## Accessibility
+
+- The accessible name is the entity's name, not the word *avatar*.

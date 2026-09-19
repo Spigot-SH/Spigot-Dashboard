@@ -1,0 +1,271 @@
+@import 'tailwindcss';
+@source "../";
+
+/* === Theme Variables === */
+@theme {
+  /* ── BREAKPOINTS ──────────────────────────────────────────────────────────
+     Change a value here and every `sm:` / `md:` / `lg:` / `xl:` utility in the
+     app moves with it. This is the only place screen sizes are defined — never
+     hand-write a `@media (max-width: …)` in a component.
+
+     Named by what actually changes at that width, not by device:              */
+  /* Minimum supported width is 320px. Real devices at or below --breakpoint-xs:
+     320 (small Android), 344 (Galaxy Z Fold 5 folded), 360 (Galaxy S8+),
+     375 (iPhone SE), 390 (iPhone 12 Pro). Everything must work at 320. */
+  --breakpoint-xs: 25rem; /* 400px — below this, every grid collapses to one column */
+  --breakpoint-sm: 40rem; /* 640px — form fields go side by side               */
+  --breakpoint-md: 48rem; /* 768px — sidebar appears; tables stop scrolling    */
+  --breakpoint-lg: 64rem; /* 1024px — multi-column dashboard layouts           */
+  --breakpoint-xl: 80rem; /* 1280px — max content width reached                */
+  --breakpoint-2xl: 96rem; /* 1536px — wide desktop, gutters grow              */
+
+  /* Supplied by next/font in app/layout.tsx, which self-hosts both families.
+     Schibsted Grotesk replaced Inter: an editorial grotesque with real character,
+     and unlike Space Grotesk it ships a true italic. */
+  --font-sans: var(--font-schibsted), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+
+  /* Default Dark Mode */
+  --color-bg: #000000;
+  --color-panel: #0e0e0e;
+  --color-panel-hover: #1a1a1a;
+  --color-border: #242424;
+  --color-glass: rgba(0, 0, 0, 0.88);
+  --color-main: #ededed;
+  --color-muted: #a1a1a1;
+  /* Brand accent. The logo is #0049FD; that value passes AA on light surfaces
+     but only reaches 2.79:1 on dark panel-hover, so dark uses a lightened
+     same-hue variant (223deg in both) rather than the logo value directly. */
+  --color-accent: #4d7fff;
+  --color-accent-dim: #7099ff;
+  /* Foreground for text and icons sitting on `accent`. Black on the dark-mode
+     accent, white on the light-mode one, so a primary button never hard-codes
+     either and never guesses. */
+  --color-on-accent: #000000;
+
+  /* Semantic state. Opaque hex on purpose: Tailwind alpha modifiers
+     (bg-error/10) only work on colours it can decompose. */
+  --color-success: #3dd68c;
+  --color-warning: #f5a524;
+  --color-error: #ff5c5c;
+  --color-info: #4d7fff;
+
+  /* ── LAYERS ───────────────────────────────────────────────────────────────
+     Seven steps, ten apart. The gaps exist so something can be slipped between
+     two layers without renumbering the rest.
+
+     A literal `z-[100]` is a bug report waiting to happen: it wins today and
+     nobody knows what it was meant to beat. If something needs to sit between
+     two layers, add a token here rather than inventing a number at the call
+     site.                                                                     */
+  --z-index-sticky: 10;
+  --z-index-header: 20;
+  --z-index-dropdown: 30;
+  --z-index-overlay: 40;
+  --z-index-modal: 50;
+  --z-index-toast: 60;
+
+  /* Skeleton is the one sanctioned looping animation: a loading indicator that
+     stops moving reads as frozen. Every other loop is banned. */
+  --animate-skeleton: skeleton 1.4s ease-in-out infinite;
+  --animate-toast-in: toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes skeleton {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+
+  /* Categorical — skills. A token type is a category, not a health state,
+     so these never carry semantic meaning and semantic never carries category. */
+  --color-cat-1: #a78bfa;
+  --color-cat-2: #f472b6;
+  --color-cat-3: #2dd4bf;
+  --color-cat-4: #a3e635;
+  --color-cat-5: #fb923c;
+}
+
+@layer base {
+  /* Dark Theme */
+  [data-theme='dark'] {
+    --color-bg: #000000;
+    --color-panel: #0e0e0e;
+    --color-panel-hover: #1a1a1a;
+    --color-border: #242424;
+    --color-glass: rgba(0, 0, 0, 0.88);
+    --color-main: #ededed;
+    --color-muted: #a1a1a1;
+    --color-accent: #4d7fff;
+    --color-accent-dim: #7099ff;
+    --color-on-accent: #000000;
+    --color-success: #3dd68c;
+    --color-warning: #f5a524;
+    --color-error: #ff5c5c;
+    --color-info: #4d7fff;
+    --color-cat-1: #a78bfa;
+    --color-cat-2: #f472b6;
+    --color-cat-3: #2dd4bf;
+    --color-cat-4: #a3e635;
+    --color-cat-5: #fb923c;
+  }
+
+  /* Light Theme — cream paper, not white. See ui.md §2.1b.
+     The reference product reads as a printed document rather than an app canvas,
+     and the surface is what carries that. The attribute stays `light` so no call
+     site and no theme toggle has to change.
+
+     The ink is warm (#17160f), not a neutral near-black: true grey on a cream
+     ground reads as a rendering fault before it reads as a choice.
+
+     All 21 pairs were recomputed against these surfaces rather than inherited —
+     a surface change invalidates every ratio measured against it. Worst pair is
+     `accent` on `panel-hover` at 4.84, up from 4.73 on the white theme this
+     replaces. Re-run the check in ui.md §2.2 before changing any value here. */
+  [data-theme='light'] {
+    --color-bg: #f5f3e9;
+    --color-panel: #eeebde;
+    --color-panel-hover: #e7e3d2;
+    --color-border: #cdc8b0;
+    --color-glass: rgba(245, 243, 233, 0.94);
+    --color-main: #17160f;
+    --color-muted: #5c5844;
+    --color-accent: #0049fd;
+    --color-accent-dim: #0037c4;
+    --color-on-accent: #ffffff;
+    --color-success: #0c6b44;
+    --color-warning: #7a4900;
+    --color-error: #b32424;
+    --color-info: #0049fd;
+    --color-cat-1: #7c3aed;
+    --color-cat-2: #db2777;
+    --color-cat-3: #0d9488;
+    --color-cat-4: #4d7c0f;
+    --color-cat-5: #c2410c;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    /* Mobile Safari inflates text in landscape without this, which breaks every
+       carefully-sized heading the moment the phone rotates. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-main);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    /* Transaction IDs, payment hashes and Algorand addresses are long unbroken
+       strings. Without this one of them forces the whole page wider than the
+       viewport and every layout below it inherits the horizontal scroll. */
+    overflow-wrap: break-word;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  header,
+  aside {
+    background-color: var(--color-panel);
+    border-color: var(--color-border);
+  }
+
+  /* ── TEXT MUST NOT BREAK ──────────────────────────────────────────────────
+     Control and label text wrapping onto a second line is always a layout bug,
+     never a feature: it changes the element's height, which shifts everything
+     around it. Set once here rather than as a `whitespace-nowrap` remembered at
+     every call site. If a label genuinely does not fit, shorten the label or
+     hide it at that breakpoint — do not let it wrap. */
+  button,
+  [role='button'],
+  th,
+  label,
+  .badge,
+  nav a {
+    white-space: nowrap;
+  }
+
+  /* Headings: no orphan on the last line. Body: no single trailing word. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Native controls default to a white field in dark mode, so they need a theme
+     colour here rather than at every call site.
+
+     No `!important`. An author `!important` in a lower layer beats a normal
+     declaration in `utilities`, so it was silently overriding every border
+     utility a component set — `Input`'s error state resolved to `border`, not
+     `error`, and the red border the design system specifies never rendered.
+     Element selectors still win wherever no utility is applied, which is the
+     only thing this rule was ever for. */
+  input,
+  select,
+  textarea {
+    background-color: var(--color-panel);
+    color: var(--color-main);
+    border-color: var(--color-border);
+  }
+
+  pre {
+    background-color: var(--color-panel) !important;
+    color: var(--color-main) !important;
+    border-color: var(--color-border) !important;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 9999px;
+  }
+
+  /* Invert the surface. `main` and `bg` already swap per theme, so one rule gives
+     white-on-dark selection in dark mode and dark-on-white in light — and both sit
+     at 17.8:1, unlike the browser default blue which is unreadable over `muted`. */
+  ::selection {
+    background: var(--color-main);
+    color: var(--color-bg);
+  }
+  ::-moz-selection {
+    background: var(--color-main);
+    color: var(--color-bg);
+  }
+}
+
+/* The skeleton pulse is the only loop in the system, so it is also the only one
+   that needs an opt-out. Flat, still, and visibly not real content. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
+}

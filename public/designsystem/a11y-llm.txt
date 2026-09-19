@@ -1,0 +1,38 @@
+# Accessibility
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/a11y`
+
+Not a checklist bolted on at the end. Every rule below already constrains a token or a component elsewhere in this system — this page is where they are stated together.
+
+## Contrast
+
+Every foreground/surface pair was computed, not estimated. All 42 clear AA for body text.
+
+| Target | Ratio | Applies to |
+| --- | --- | --- |
+| AA body | 4.5:1 | All text, including state colours on their surface |
+| AA non-text | 3:1 | Categorical dots, focus rings, meaningful boundaries |
+| Decorative | none | Hairline borders — which is why they carry no meaning |
+
+## Focus
+
+2px `accent` ring at 2px offset, on every interactive element. Focus is **accent**; selection is **neutral** — they were both accent once and a keyboard user could not tell them apart.
+
+## Colour is never the only signal
+
+Roughly 1 in 12 people cannot rely on hue. Every state carries a dot, an icon or a text label alongside the colour: `StatusBadge` pairs a dot with mono caps, `Input` errors carry an icon, banners carry both.
+
+## Motion
+
+`prefers-reduced-motion: reduce` drops every duration to 0.01ms and removes press transforms. The state change still happens — it arrives instantly. Never remove the state change itself. Skeleton is the one sanctioned loop, and it falls back to a flat opacity.
+
+## Targets and semantics
+
+| Rule | Why |
+| --- | --- |
+| 44x44px minimum touch target | Below this, taps miss on a phone |
+| Native elements first | `Select` uses a real `<select>` for keyboard, screen-reader and mobile-picker behaviour |
+| Disabled means `disabled` | Styling something to look disabled still lets it be focused and clicked |
+| Tooltips open on focus too | `:has(:focus-visible)`, not hover alone — touch has no hover |
+| Icon-only controls carry `aria-label` | The hamburger and theme toggle both do |

@@ -1,0 +1,39 @@
+# Motion
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/motion`
+
+Three durations, two curves. Fast enough to read as response, never as a transition you wait through.
+
+## Durations
+
+| Token | Value | Applies to |
+| --- | --- | --- |
+| --dur-1 | 90ms | Press. Buttons and options scale to 0.97 |
+| --dur-2 | 140ms | Hover, colour, focus ring, row highlight |
+| --dur-3 | 200ms | Overlays, disclosure, theme swap |
+
+## Curves
+
+Enter and exit are not the same curve. A decelerating exit feels reluctant — things leaving should accelerate away.
+
+| Token | Curve | Direction |
+| --- | --- | --- |
+| --ease | cubic-bezier(0.16, 1, 0.3, 1) | Enter — settles |
+| --ease-in | cubic-bezier(0.4, 0, 1, 1) | Exit — accelerates |
+
+## Try them
+
+_Rendered example._
+
+```
+Only opacity and transform animate — both composite on the GPU
+and never trigger layout.
+
+Anything that appears reserves its space: the copy check and the
+option tick render at opacity:0 rather than being absent.
+```
+
+> **REDUCED MOTION IS HONOURED**
+>
+> `prefers-reduced-motion: reduce` drops every duration to 0.01ms and removes press transforms. The state change still happens — it just arrives instantly. Nothing disappears.

@@ -1,0 +1,37 @@
+# Table
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/table`
+
+The densest surface in the app. Hairline separators, no zebra striping, hover raises the row. Machine values in mono tabular.
+
+## Endpoints
+
+_Rendered example._
+
+```
+No zebra striping — not one of the eight table references stripes rows.
+Hover raises to panel-hover. Status is bare coloured text, not a badge,
+so a chip does not repeat on every row.
+
+Mobile: scrolls horizontally with the status column pinned.
+```
+
+## When to use
+
+- Rows of the same shape, where at least one column is worth comparing down the column.
+- One descriptive row with a control beside it is not a table.
+
+## Behaviour
+
+- An empty table renders an **EmptyState** outside the table, not a row that says no data.
+- Numeric columns are mono tabular, so the digits line up and a column can be scanned rather than read.
+
+## Content
+
+- Headers are Title Case nouns. Unknown values are `—`.
+- Relative time up to seven days, then a date: `2m ago`, then `14 Mar 2026`.
+
+## Accessibility
+
+- A sortable header is a button, and it announces the sort it will apply next, not the one already applied.

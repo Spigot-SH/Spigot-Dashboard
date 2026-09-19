@@ -1,0 +1,25 @@
+# Space & radius
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/space`
+
+4px spacing base. Three radius steps. No full pills except avatars.
+
+## Radius
+
+_Rendered example._
+
+```
+rounded-sm   inputs, badges, chips
+rounded-md   buttons, cards
+rounded-lg   modals, panels
+```
+
+## Spacing
+
+| Step | Use |
+| --- | --- |
+| 16px | Compact container padding |
+| 24px | Default card padding |
+| 40px | Section separation |
+| 64px | Page-level rhythm |

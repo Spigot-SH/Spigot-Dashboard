@@ -1,0 +1,37 @@
+# Input
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/input`
+
+Label above in mono caps. Errors carry an icon as well as colour.
+
+## States
+
+_Rendered example._
+
+```
+Focus:  border-accent + 1px ring
+Error:  border-error + icon + message below
+
+Colour is never the only signal — roughly 1 in 12 users cannot rely on hue.
+```
+
+## When to use
+
+- One line of free-form text. The moment content can wrap to a second line it is a textarea.
+
+## Behaviour
+
+- Validate on blur, not on every keystroke. Per-keystroke validation flags a half-typed value as wrong.
+- Trim leading and trailing whitespace before submit, so a field of spaces does not pass a required check.
+
+## Content
+
+- The label is a Title Case noun: `Endpoint Name`, `Price Per Call`.
+- The placeholder shows an example value such as `api.example.com`, never an instruction like `Enter your domain`.
+- Validation names the field and the constraint and ends in a full stop. No *please*.
+
+## Accessibility
+
+- The error carries an icon and a message, not only a red border. Roughly one user in twelve cannot rely on hue.
+- Helper text is a sibling element wired through `aria-describedby`, so it is announced with the field rather than after it.

@@ -1,0 +1,52 @@
+# Colors
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/colors`
+
+Pure black and pure white grounds, a neutral grey ramp with no hue cast, one accent, four semantic states, five categorical hues. All 42 foreground/surface pairs meet WCAG AA.
+
+## Surfaces
+
+_Rendered example._
+
+```
+bg-bg  bg-panel  bg-panel-hover  border-border
+```
+
+## Content & accent
+
+_Rendered example._
+
+```
+text-main  text-muted  text-accent  bg-accent  hover:bg-accent-dim
+```
+
+## Semantic state
+
+_Rendered example._
+
+```
+info === accent. One blue, deliberately.
+Red is reserved for payment failure — which is why the brand accent is not red or orange.
+```
+
+## Categorical — skills
+
+_Rendered example._
+
+```
+5 hues, 19 skills — colour groups, it does not identify.
+Cyan was removed: at 199deg it sat 9deg from the accent and read as "selected".
+```
+
+## Measured contrast
+
+| Theme | Tightest pair | Ratio |
+| --- | --- | --- |
+| Dark | accent-dim on panel-hover | 5.17 |
+| Light | success on panel-hover | 4.73 |
+| Both | border — non-text by design | 1.35 |
+
+> **BORDERS CARRY NO MEANING**
+>
+> Anything a user must perceive — focus ring, error outline — uses `accent` or a state colour. A focus ring drawn in `border` would be invisible and would fail an audit.

@@ -1,0 +1,46 @@
+# Typography
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/typography`
+
+Two faces split by role, not by size. A grotesque for headings and reading copy, JetBrains Mono for labels, metadata, IDs and every number.
+
+## Roles
+
+_Rendered example._
+
+```
+text-display  text-h1  text-h2  text-h3
+text-body  text-small  text-label  text-micro
+```
+
+## Scale
+
+| Token | Size | Line | Tracking | Face |
+| --- | --- | --- | --- | --- |
+| text-display | 64 | 1.02 | −0.03em | Sans |
+| text-h1 | 44 | 1.10 | −0.02em | Sans |
+| text-h2 | 26 | 1.25 | −0.01em | Sans |
+| text-h3 | 19 | 1.35 | 0 | Sans |
+| text-body | 16 | 1.60 | 0 | Sans |
+| text-small | 15 | 1.50 | 0 | Sans |
+| text-label | 12 | 1.40 | 0.09em | Mono caps |
+| text-micro | 11 | 1.40 | 0.06em | Mono |
+
+## Tabular numerals
+
+_Rendered example._
+
+```
+font-mono tabular-nums
+Required for every amount, balance, ID and hash.
+```
+
+## The faces
+
+| Role | Face | Weights | Italic |
+| --- | --- | --- | --- |
+| Display & body | **Schibsted Grotesk** | 400–700 | Yes |
+| Labels, IDs, numerals | **JetBrains Mono** | 400–600 | Not used |
+
+Both self-hosted by `next/font` at build time — no third-party request at runtime. Schibsted Grotesk replaced Inter, flagged as a generic default, and Space Grotesk, which has no true italic; that limitation was recorded as a system constraint and no longer applies.

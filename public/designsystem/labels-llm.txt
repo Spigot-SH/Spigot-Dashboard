@@ -1,0 +1,50 @@
+# Mono label & numbering
+
+> Patterns · Foundation · Spigot design system
+> `/designsystem#/labels`
+
+Small letterspaced mono caps in `muted` above a block. Structural numbering only where the number encodes real sequence.
+
+## Examples
+
+_Rendered example._
+
+```
+text-label text-muted uppercase tracking-[0.09em]
+
+Never number an unordered list — that is the templated pattern
+this system exists to prevent.
+```
+
+## Middle truncation
+
+A transaction hash and a wallet address carry information at both ends: the head identifies, the tail disambiguates. Cutting the tail off makes two different values look identical.
+
+_Rendered example._
+
+```
+One ellipsis glyph (…), never three periods.
+
+Copying yields the full value, never the shortened form.
+The full value is the element's accessible name.
+```
+
+> **NEVER ON PROSE**
+>
+> Middle truncation is for values, not sentences. Cutting the middle out of a sentence destroys its meaning. A sentence that is too long is truncated at the end, or not at all.
+
+## When to use
+
+- Above a block, to name it. As structural numbering only where the number encodes real sequence. Wizard steps do; a feature list does not.
+
+## Behaviour
+
+- Mono caps in `muted`. Never the action role: a button label is normal case, because a label names and an action commits.
+
+## Content
+
+- One or two words. No sentences, no punctuation.
+
+## Accessibility
+
+- The uppercase is styling, not content. Write it normal case in the markup and let `text-transform` do the work, or a screen reader spells it out letter by letter.

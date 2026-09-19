@@ -1,0 +1,67 @@
+# Placeholders
+
+> Patterns · Foundation · Spigot design system
+> `/designsystem#/placeholders`
+
+Stand-ins for decisions not yet made — the brand name, the fee, the domain, the logo. All generated in CSS, all theme-responsive, all deliberately conspicuous. A placeholder that looks finished is worse than no placeholder.
+
+## Logo mark
+
+_Rendered example._
+
+```
+A 5x5 dot grid, the house imagery treatment at glyph scale.
+Generated from a fixed bit pattern — deterministic, theme-responsive,
+and obviously provisional.
+
+Never a raster placeholder: a PNG survives into production
+because nothing flags it.
+```
+
+## Image slots
+
+_Rendered example._
+
+```
+Dot field at low density with the intended dimensions labelled.
+Reserve the real aspect ratio — a placeholder of the wrong shape
+hides the layout problem until the asset arrives.
+```
+
+## Copy tokens
+
+_Rendered example._
+
+```
+Unresolved values render in warning colour with a dashed border.
+They are meant to be impossible to miss in a screenshot.
+```
+
+## The tokens
+
+| Token | Replaces | Blocked until |
+| --- | --- | --- |
+| Spigot | Product name in prose, nav, titles | Name chosen |
+| [FEE_PCT] | Platform percentage | Resolved — 3% |
+| spigot.sh | Canonical URL, OG, sitemap | Domain registered |
+| [LOGO] | Real mark | Brand exists |
+
+> **THEY CANNOT SHIP SILENTLY**
+>
+> The bracketed-caps form is greppable and appears in no real code. One command finds every unresolved value:
+
+## When to use
+
+- While the real asset does not exist yet. A placeholder is a promise that something is coming, not a design.
+
+## Behaviour
+
+- Reserves the exact space the real thing will take, so nothing moves when it lands.
+
+## Content
+
+- A placeholder that ships is a bug. Every one of them is tracked.
+
+## Accessibility
+
+- Never `alt=""` on a placeholder standing in for meaningful content. That hides the gap from exactly the users who most need it named.

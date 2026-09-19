@@ -1,0 +1,66 @@
+# CodeBlock
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/codeblock`
+
+The most load-bearing component in an API product. Request and response bodies, curl snippets and the x402 payment header all render here. Mono throughout, horizontal scroll, never wrapped — a wrapped JSON body is unreadable.
+
+## Response body
+
+_Rendered example._
+
+```
+Syntax colour uses the CATEGORICAL ramp, not the semantic one.
+A token type is a category, not a health state — colouring a string
+with `success` would imply the string is somehow healthy.
+
+key  cat-1    string  cat-3    number  cat-4    literal  cat-5    punctuation  muted
+```
+
+## Shell
+
+_Rendered example._
+
+```
+Header carries the language label and the copy button.
+Never wrap: horizontal scroll is correct for code.
+```
+
+> **NEVER PRETTY-PRINT A HASH**
+>
+> Transaction IDs and payment hashes render in full, on one line, selectable. Truncation belongs in tables where a value is a reference, never where it is the payload.
+
+## Copy affordance
+
+Three surfaces copy to the clipboard: a code sample, the domain verification token, and this site's own `Copy page as Markdown`. One control, one confirmation, everywhere.
+
+_Rendered example._
+
+```
+Idle:     copy glyph, muted
+Copied:   check glyph, success, for 1.5s
+
+The glyph changes shape as well as colour, so the
+confirmation still reads with hue removed.
+```
+
+> **CONFIRMATION IS A SHAPE, NOT A COLOUR**
+>
+> It reverts after 1.5 seconds: long enough to notice, short enough that the control is ready again before the user is. Nothing about the copy is announced twice: the button label stays put and only the glyph moves.
+
+## When to use
+
+- A response body, a request, or a shell command the reader will copy. A single token inside a sentence is `<code>`, not a block.
+
+## Behaviour
+
+- Code is `white-space: pre` and never reflows. A narrow viewport scrolls it; it does not wrap it.
+- A shell prompt is drawn by the block and is not part of what gets copied.
+
+## Content
+
+- Samples stay runnable. Real values, or placeholders that are obviously placeholders. Never invented syntax that would fail if pasted.
+
+## Accessibility
+
+- The copy control is a real button with a label, and its confirmation changes shape as well as colour.

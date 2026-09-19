@@ -1,0 +1,42 @@
+# Modal
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/modal`
+
+Destructive actions sit far left, separated from the safe pair. This app has irreversible operations and they must not sit adjacent to Cancel.
+
+## Live
+
+_Rendered example._
+
+```
+Enter 200ms decelerating: fade + translateY(8px) + scale(0.985)
+Exit accelerates on --ease-in.
+
+Focus trapped, Esc closes, focus returns to the trigger.
+```
+
+## Static
+
+_Rendered example._
+
+## When to use
+
+- A decision that has to block the page. Routine creation belongs on its own route, not behind an overlay.
+
+## Behaviour
+
+- Focus defaults to `Cancel` on anything destructive.
+- Escape and outside-click dismiss, except on the destructive confirmation, where the only ways out are the two buttons.
+- Focus returns to the trigger on close, so a keyboard user does not restart at the top of the page.
+
+## Content
+
+- The title is a Title Case statement, never a question.
+- The primary button repeats the title's verb. `Cancel` stays literally Cancel.
+- An irreversible action ends with *This cannot be undone.*
+
+## Accessibility
+
+- `aria-labelledby` points at the title.
+- After a failure, focus stays inside the modal so the error is reachable; after success it returns to the trigger.

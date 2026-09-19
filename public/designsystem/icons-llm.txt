@@ -1,0 +1,31 @@
+# Icons
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/icons`
+
+Lucide, at a single stroke weight. Icons clarify a label — they never replace one, except where the control is universally understood and carries an aria-label.
+
+## Core set
+
+_Rendered example._
+
+```
+lucide-react, already a dependency.
+
+24x24 viewBox, stroke-width 1.75, round caps and joins.
+Rendered at 16px in dense UI, 20px in chrome, 48px in empty states.
+Always currentColor — never a hard-coded fill.
+```
+
+## Sizes
+
+| Size | Where |
+| --- | --- |
+| 12px | Inside a badge or a mono label |
+| 16px | Table rows, buttons, inline with body text |
+| 20px | Chrome — header, sidebar, toolbars |
+| 48px | Empty states. Hairline weight at this size |
+
+> **ONE WEIGHT, ONE FAMILY**
+>
+> Mixing icon sets is the fastest way to make an interface look assembled rather than designed — differing stroke weights and corner radii read as inconsistency even when nobody can name why. Animated icons follow the same rule: same family, motion only on real state change, never on anything repeated down a list.

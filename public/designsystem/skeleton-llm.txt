@@ -1,0 +1,59 @@
+# Skeleton
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/skeleton`
+
+Loading placeholders that match the shape of what is coming. Every view in this app fetches on mount, so this is not optional — a blank panel and a spinner both discard the layout the user is about to read.
+
+## Content
+
+_Rendered example._
+
+```
+bg-panel-hover, rounded-sm, pulsing opacity 1 -> 0.45 over 1.4s
+
+Match the real content's dimensions. A skeleton that is the wrong
+shape causes a layout jump the moment data arrives, which is worse
+than showing nothing.
+```
+
+## Table rows
+
+_Rendered example._
+
+```
+Preserve the column structure. The header renders immediately —
+it is known before the request resolves.
+```
+
+> **THE ONE SANCTIONED LOOP**
+>
+> Motion (§4.4) bans looping animation everywhere else. Skeleton is the deliberate exception: a loading indicator that stops moving reads as frozen. Under `prefers-reduced-motion` the pulse is removed and a flat 0.7 opacity is used instead — still visibly a placeholder, no movement.
+
+## Which loading pattern
+
+Four different waits, four different answers. Six views used to hand-roll `animate-spin`; all of them now use `common/Spinner.tsx`.
+
+| The wait | Use | Why |
+| --- | --- | --- |
+| Data filling a layout whose shape is known | Skeleton Shipped | Reserve the shape and nothing shifts when it lands |
+| One action, one to three seconds | Spinner Shipped | Submit buttons, a row-level retry |
+| Inline in a sentence | Loading dots | `Settling…`, so the wait belongs to the words |
+| The total is knowable | Progress | Import and publish steps. Specified, not built |
+
+> **MOUNT ON START, NOT ON RENDER**
+>
+> A spinner rendered up front and hidden with CSS keeps rotating while it is invisible, so it appears mid-turn the moment it is shown. Mount it when the action starts. For a submit button the spinner belongs *inside* the button, which keeps the control focusable and lets it announce that it is busy.
+
+## When to use
+
+- Async data arriving into a layout whose shape is already known: table rows, a metric row, a publisher header.
+
+## Behaviour
+
+- Matches the final dimensions, so nothing shifts when the data lands.
+- Never permanent decoration, and never a stand-in for an empty state. A list that is empty is empty, not loading.
+
+## Accessibility
+
+- The region is `aria-busy="true"` while loading, and nothing focusable sits inside a skeleton.

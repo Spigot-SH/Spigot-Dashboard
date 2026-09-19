@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Logs, OS, editor
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# machine-local notes, handoffs, scratch — never committed
+local/
+
+# tool-written local state
+.claude/settings.local.json

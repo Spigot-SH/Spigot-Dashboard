@@ -1,0 +1,42 @@
+# Introduction
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/introduction`
+
+The design system for Spigot — APIs and tools you can call without a subscription, metered per request. Every token here is defined in `UI.md`, and every contrast ratio was computed rather than estimated.
+
+## Precedence
+
+Layer 0 repo hard rules always win. This system is Layer 1 — project truth. Aesthetic skills are advisory against it, never above it.
+
+| Layer | What | Authority |
+| --- | --- | --- |
+| 0 | Repo hard rules — Tailwind `@theme`, SSR, routing | Always wins |
+| 1 | This system | Project truth |
+| 2 | Aesthetic skills | Advisory |
+| 3 | Performance & code-volume skills | Advisory |
+| 4 | Audit gate | Blocking, runs last |
+
+## The rules that shape everything
+
+| Rule | Consequence |
+| --- | --- |
+| Borders define boxes, not fill | `panel` is 1.16:1 against pure black. A surface cannot separate itself by background alone |
+| One accent, under 5% of surface | Primary action, focus, current nav item, links. Nothing else |
+| Selection is neutral, focus is accent | Both were accent once — a keyboard user could not tell them apart |
+| Colour is never the only signal | Every state carries a dot, icon or label alongside the hue |
+| Machine values are mono, tabular | Proportional digits make a column of amounts unscannable |
+| Anything that appears reserves its space | Otherwise it shifts layout at the moment the user is looking |
+
+## Reading this as a machine
+
+Every page is mirrored as Markdown. `Copy page as Markdown` at the top of any page puts that page on the clipboard; here it is joined by `Copy all 33 pages`, which puts the whole system on the clipboard as one document.
+
+| Path | Contents |
+| --- | --- |
+| `llm.txt` | Every page, concatenated, in sidebar order |
+| `<page>-llm.txt` | One page, for example `button-llm.txt`, `colors-llm.txt` |
+
+> **GENERATED, NOT WRITTEN**
+>
+> The Markdown is produced from this page by `scripts/gen-designsystem-llm.mjs`. Editing a `-llm.txt` by hand is pointless, because the next run overwrites it. Change the page.

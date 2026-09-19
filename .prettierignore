@@ -1,0 +1,10 @@
+node_modules
+.next
+build
+package-lock.json
+*.tsbuildinfo
+next-env.d.ts
+security-log
+stealth-ref
+local
+public/designsystem

@@ -1,0 +1,58 @@
+# Button
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/button`
+
+Four variants. Normal case — mono caps is the label role, not the action role.
+
+## Variants
+
+_Rendered example._
+
+```
+<Button variant="primary">Publish API</Button>
+<Button variant="secondary">Cancel</Button>
+<Button variant="ghost">Skip</Button>
+<Button variant="danger">Unpublish</Button>
+```
+
+## Props
+
+| Variant | Rest | Hover | Focus |
+| --- | --- | --- | --- |
+| primary | bg-accent | bg-accent-dim | ring accent |
+| secondary | bg-panel + border | bg-panel-hover | ring accent |
+| ghost | text-muted | text-main | ring accent |
+| danger | bg-error | 85% opacity | ring accent |
+
+## States
+
+_Rendered example._
+
+```
+Focus ring uses accent, never border.
+border is 1.35:1 and would be invisible.
+```
+
+## When to use
+
+- Anything that mutates state: publish, settle, unpublish, top up. Navigation that changes the URL is a link. A button that only navigates loses middle-click and open-in-new-tab.
+- One `primary` per view. It is the accent, the accent is capped at 5% of surface, and a second primary halves the meaning of the first.
+- `danger` is for irreversible or billable actions. Unpublishing an API is danger; cancelling a form is `secondary`.
+
+## Behaviour
+
+- Disable only when the action is genuinely impossible (unverified domain, zero balance), and name the reason next to it. A dimmed button with no reason reads as broken.
+- A button that fires a request stays focusable while it runs, and carries its own loading state. Six views currently place a hand-rolled spinner *beside* a button instead; that is the button's job.
+
+## Content
+
+- Title Case, **Verb + Noun**, naming what happens: `Publish API`, `Top Up Credit`. Never `Submit`, `OK` or `Confirm`.
+- The button verb and its toast verb are the same word. `Publish API` is confirmed by `API published`, not by `Done`.
+- `Cancel` stays literally Cancel.
+
+## Accessibility
+
+- Focus is the accent ring, never the border: `border` is 1.35:1 and would be invisible.
+- An icon-only button carries an `aria-label` naming the action and its target: `Copy publisher ID`, not `Copy`.
+- Never put `aria-label` on a button that already has visible text. It replaces the label rather than adding to it.

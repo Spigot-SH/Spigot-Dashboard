@@ -1,0 +1,42 @@
+# Grid
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/grid`
+
+A 12-column grid on a 4px base. Layouts are composed from column spans, not from arbitrary widths — that is what keeps two pages built months apart looking related.
+
+## Columns
+
+_Rendered example._
+
+```
+12 columns, 24px gutter, 4px base unit.
+
+12 divides by 2, 3, 4 and 6 — halves, thirds, quarters and sixths all
+land on the grid. 10 or 16 columns do not.
+```
+
+## Common spans
+
+_Rendered example._
+
+```
+4-4-4   three metric cards
+8-4     content with a side rail
+12      tables, wizard steps, anything dense
+
+Below --bp-md every span collapses to 12.
+```
+
+## Container widths
+
+| Context | Max width | Why |
+| --- | --- | --- |
+| Reading copy | 68ch | Measure, not pixels — it holds across type sizes |
+| Docs / forms | 940px | Comfortable for a single column of dense content |
+| App shell | 1320px | Beyond this, gutters grow instead of the content |
+| Dashboard | 1400px | Tables earn the extra width |
+
+> **CONTENT STOPS GROWING BEFORE THE VIEWPORT DOES**
+>
+> A line of text 2000px wide is unreadable regardless of font size. Past the maximum, the gutters take the space — which is why the shell has vertical rules rather than a stretched layout.

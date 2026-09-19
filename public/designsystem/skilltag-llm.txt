@@ -1,0 +1,40 @@
+# SkillTag
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/skilltag`
+
+Two variants. The tag displays; the option is a control and keeps a hit target. Only the dot carries hue — the label stays neutral, because five hues across 19 skills cannot identify anything.
+
+## Tag — display
+
+_Rendered example._
+
+```
+<SkillTag name="Geocoding" />
+
+No container. Tables, cards, API detail.
+Hue assigned by stable hash of the name — never array index.
+```
+
+## Option — control
+
+_Rendered example._
+
+```
+<SkillOption name="Geocoding" selected />
+
+Selected: border-main + bg-panel-hover + check. Neutral, never accent —
+accent is reserved for focus, so both can be visible at once.
+```
+
+## When to use
+
+- A category on a thing, such as the skills an API exposes. Display tags label; option tags are a control.
+
+## Behaviour
+
+- A display tag is never clickable. If the user can act on it, it is a control and it looks like one.
+
+## Content
+
+- Canonical skill names, matching the API vocabulary exactly. A tag that paraphrases is a tag nobody can search for.

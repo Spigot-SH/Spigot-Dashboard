@@ -1,0 +1,1764 @@
+# Spigot design system
+
+Every page of the design system, in sidebar order. 38 pages.
+Generated from `/designsystem`. Do not edit.
+
+## Contents
+
+### Foundations
+
+- Introduction · Foundation (`introduction-llm.txt`)
+- Adding a page · Foundation (`contributing-llm.txt`)
+- Colors · Foundation (`colors-llm.txt`)
+- Typography · Foundation (`typography-llm.txt`)
+- Space & radius · Foundation (`space-llm.txt`)
+- Depth · Foundation (`depth-llm.txt`)
+- Motion · Foundation (`motion-llm.txt`)
+- Layers & breakpoints · Foundation (`layers-llm.txt`)
+- Grid · Foundation (`grid-llm.txt`)
+- Icons · Foundation (`icons-llm.txt`)
+- Accessibility · Foundation (`a11y-llm.txt`)
+- Content · Foundation (`content-llm.txt`)
+- Brand · Foundation (`brand-llm.txt`)
+
+### Patterns
+
+- Spec row · Shipped (`spec-row-llm.txt`)
+- Mono label · Foundation (`labels-llm.txt`)
+- Imagery · Foundation (`imagery-llm.txt`)
+- Placeholders · Foundation (`placeholders-llm.txt`)
+
+### Components
+
+- Button · Shipped (`button-llm.txt`)
+- Input · Shipped (`input-llm.txt`)
+- StatusBadge · Shipped (`status-llm.txt`)
+- SkillTag · Shipped (`skilltag-llm.txt`)
+- Card · Shipped (`card-llm.txt`)
+- Table · Shipped (`table-llm.txt`)
+- WizardRail · Shipped (`wizard-llm.txt`)
+- Modal · Shipped (`modal-llm.txt`)
+- EmptyState · Shipped (`empty-llm.txt`)
+- CodeBlock · Shipped (`codeblock-llm.txt`)
+- Skeleton · Shipped (`skeleton-llm.txt`)
+- Toast & Banner · Shipped (`toast-llm.txt`)
+- Select · Shipped (`select-llm.txt`)
+- Tabs · Shipped (`tabs-llm.txt`)
+- Tooltip · Shipped (`tooltip-llm.txt`)
+- Avatar · Shipped (`avatar-llm.txt`)
+- FileUpload · Shipped (`upload-llm.txt`)
+- Progress · Shipped (`progress-llm.txt`)
+- Fieldset · Shipped (`fieldset-llm.txt`)
+- FileTree · Shipped (`filetree-llm.txt`)
+- Pagination · Shipped (`pagination-llm.txt`)
+
+
+---
+
+# Introduction
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/introduction`
+
+The design system for Spigot — APIs and tools you can call without a subscription, metered per request. Every token here is defined in `UI.md`, and every contrast ratio was computed rather than estimated.
+
+## Precedence
+
+Layer 0 repo hard rules always win. This system is Layer 1 — project truth. Aesthetic skills are advisory against it, never above it.
+
+| Layer | What | Authority |
+| --- | --- | --- |
+| 0 | Repo hard rules — Tailwind `@theme`, SSR, routing | Always wins |
+| 1 | This system | Project truth |
+| 2 | Aesthetic skills | Advisory |
+| 3 | Performance & code-volume skills | Advisory |
+| 4 | Audit gate | Blocking, runs last |
+
+## The rules that shape everything
+
+| Rule | Consequence |
+| --- | --- |
+| Borders define boxes, not fill | `panel` is 1.16:1 against pure black. A surface cannot separate itself by background alone |
+| One accent, under 5% of surface | Primary action, focus, current nav item, links. Nothing else |
+| Selection is neutral, focus is accent | Both were accent once — a keyboard user could not tell them apart |
+| Colour is never the only signal | Every state carries a dot, icon or label alongside the hue |
+| Machine values are mono, tabular | Proportional digits make a column of amounts unscannable |
+| Anything that appears reserves its space | Otherwise it shifts layout at the moment the user is looking |
+
+## Reading this as a machine
+
+Every page is mirrored as Markdown. `Copy page as Markdown` at the top of any page puts that page on the clipboard; here it is joined by `Copy all 33 pages`, which puts the whole system on the clipboard as one document.
+
+| Path | Contents |
+| --- | --- |
+| `llm.txt` | Every page, concatenated, in sidebar order |
+| `<page>-llm.txt` | One page, for example `button-llm.txt`, `colors-llm.txt` |
+
+> **GENERATED, NOT WRITTEN**
+>
+> The Markdown is produced from this page by `scripts/gen-designsystem-llm.mjs`. Editing a `-llm.txt` by hand is pointless, because the next run overwrites it. Change the page.
+
+---
+
+# Adding a page
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/contributing`
+
+What has to be true before a page exists, what it must contain, and what to run afterwards. The system documents more than the codebase ships, which is allowed, but only when each page says so.
+
+## Every page declares a status
+
+The chip beside the group name. It is not decoration: it is the difference between a page you can build against and a page that is an argument for what to build.
+
+| Status | Means | Test |
+| --- | --- | --- |
+| Shipped | A primitive exists and the page describes it | components/common/<Name>.tsx |
+| Spec | The page runs ahead of the code. It is a contract, not a description | No primitive. Often a raw element inlined in a view |
+| Foundation | Tokens, rules or voice. There is no primitive to have | Backed by `@theme` or by prose, not by a file |
+
+> **A SPEC PAGE NAMES WHAT IS MISSING**
+>
+> Not in a footnote. A visible note saying which file does not exist and which views are hand-rolling it instead, as the Select page does. A page that quietly describes something unbuilt is the one failure mode this system cannot survive: it makes every other page suspect.
+
+## What a page must contain
+
+- An **eyebrow** naming the group, and a **title** that is the name the code uses. If the page and the file disagree on the name, one of them is wrong.
+- A **lede** of one or two sentences saying what the thing is and the single decision behind it. Not a feature list.
+- At least one **demo**, rendered, with the real tokens. A screenshot or a description is not a demo.
+- Guidance, in the buckets below, but only the buckets that have something true to say.
+
+> **DO NOT MIRROR ANOTHER SYSTEM'S PAGE**
+>
+> Geist's Button page has eleven sections because Vercel needed eleven, not because eleven is correct. A page gets the sections it has been asked for. Speculative structure looks like thoroughness and behaves like debt.
+
+## The four guidance buckets
+
+Always in this order, and never renamed. Omit any bucket with nothing true in it. Twenty of the sixty-seven pages in the system that inspired this have no guidance at all, and that is a signal rather than an omission.
+
+| Bucket | Answers | The tell |
+| --- | --- | --- |
+| When to use | Which component, not how | Always names the sibling to switch to instead |
+| Behaviour | Runtime, state, timing | Defaults, and what not to do automatically |
+| Content | The words in the UI | Casing, sentence shape, forbidden strings |
+| Accessibility | Roles, keys, focus | Required aria, keyboard map, where focus returns |
+
+> **WHEN TO USE IS THE ONE THAT EARNS ITS PLACE**
+>
+> A bucket that only describes the component is worth nothing. The first bullet should send the reader somewhere else when this is the wrong choice. That is what turns a list of components into a decision tree.
+
+## Wiring a new route
+
+Four edits, in this order. The status, icon and title live in one place so the sidebar, the status chip and the generated Markdown cannot drift apart.
+
+_Rendered example._
+
+## The Markdown mirror is generated
+
+Every page is also a `.txt` file, and the whole system is one `llm.txt`. They are build output.
+
+- Run `npm run designsystem:llm` after any content change. Forgetting it leaves the Markdown describing the previous version of the page, which is worse than having no Markdown.
+- Never edit a `-llm.txt` by hand. The next run overwrites it. Change the page.
+- The generator reads `index.html` for content and `app.js` for order and status, so the sidebar and the mirror always agree.
+
+## When not to add a page
+
+- There is no surface for it. A page for a component this product will never render is debt with a table of contents.
+- It duplicates a page that exists. Extend the page instead; two half-pages on one topic are worse than one.
+- It documents a variant rather than a component. Variants are sections.
+- You are matching another design system's page count.
+
+> **IF SOMETHING LOOKS MISSING, SAY SO AND STOP**
+>
+> Naming a gap costs a sentence. Filling it uninvited costs a review and often a revert. The queue of pages that are wanted but not yet earned lives in `DESIGNSYSTEM-PLAN.md`.
+
+---
+
+# Colors
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/colors`
+
+Pure black and pure white grounds, a neutral grey ramp with no hue cast, one accent, four semantic states, five categorical hues. All 42 foreground/surface pairs meet WCAG AA.
+
+## Surfaces
+
+_Rendered example._
+
+```
+bg-bg  bg-panel  bg-panel-hover  border-border
+```
+
+## Content & accent
+
+_Rendered example._
+
+```
+text-main  text-muted  text-accent  bg-accent  hover:bg-accent-dim
+```
+
+## Semantic state
+
+_Rendered example._
+
+```
+info === accent. One blue, deliberately.
+Red is reserved for payment failure — which is why the brand accent is not red or orange.
+```
+
+## Categorical — skills
+
+_Rendered example._
+
+```
+5 hues, 19 skills — colour groups, it does not identify.
+Cyan was removed: at 199deg it sat 9deg from the accent and read as "selected".
+```
+
+## Measured contrast
+
+| Theme | Tightest pair | Ratio |
+| --- | --- | --- |
+| Dark | accent-dim on panel-hover | 5.17 |
+| Light | success on panel-hover | 4.73 |
+| Both | border — non-text by design | 1.35 |
+
+> **BORDERS CARRY NO MEANING**
+>
+> Anything a user must perceive — focus ring, error outline — uses `accent` or a state colour. A focus ring drawn in `border` would be invisible and would fail an audit.
+
+---
+
+# Typography
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/typography`
+
+Two faces split by role, not by size. A grotesque for headings and reading copy, JetBrains Mono for labels, metadata, IDs and every number.
+
+## Roles
+
+_Rendered example._
+
+```
+text-display  text-h1  text-h2  text-h3
+text-body  text-small  text-label  text-micro
+```
+
+## Scale
+
+| Token | Size | Line | Tracking | Face |
+| --- | --- | --- | --- | --- |
+| text-display | 64 | 1.02 | −0.03em | Sans |
+| text-h1 | 44 | 1.10 | −0.02em | Sans |
+| text-h2 | 26 | 1.25 | −0.01em | Sans |
+| text-h3 | 19 | 1.35 | 0 | Sans |
+| text-body | 16 | 1.60 | 0 | Sans |
+| text-small | 15 | 1.50 | 0 | Sans |
+| text-label | 12 | 1.40 | 0.09em | Mono caps |
+| text-micro | 11 | 1.40 | 0.06em | Mono |
+
+## Tabular numerals
+
+_Rendered example._
+
+```
+font-mono tabular-nums
+Required for every amount, balance, ID and hash.
+```
+
+## The faces
+
+| Role | Face | Weights | Italic |
+| --- | --- | --- | --- |
+| Display & body | **Schibsted Grotesk** | 400–700 | Yes |
+| Labels, IDs, numerals | **JetBrains Mono** | 400–600 | Not used |
+
+Both self-hosted by `next/font` at build time — no third-party request at runtime. Schibsted Grotesk replaced Inter, flagged as a generic default, and Space Grotesk, which has no true italic; that limitation was recorded as a system constraint and no longer applies.
+
+---
+
+# Space & radius
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/space`
+
+4px spacing base. Three radius steps. No full pills except avatars.
+
+## Radius
+
+_Rendered example._
+
+```
+rounded-sm   inputs, badges, chips
+rounded-md   buttons, cards
+rounded-lg   modals, panels
+```
+
+## Spacing
+
+| Step | Use |
+| --- | --- |
+| 16px | Compact container padding |
+| 24px | Default card padding |
+| 40px | Section separation |
+| 64px | Page-level rhythm |
+
+---
+
+# Depth
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/depth`
+
+In-page surfaces get no shadow — depth is a value shift plus a hairline. Overlays get one shadow token and a frosted scrim.
+
+## Elevation
+
+_Rendered example._
+
+```
+--shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.45)
+--glass-blur: 10px
+
+No sm/md/lg scale. The enforcement grep fails any shadow-{sm,md,lg,xl,2xl}.
+```
+
+## Frosted glass
+
+> **DELIBERATELY WEAK**
+>
+> Every contrast ratio assumes an opaque backdrop. A translucent surface inherits what is behind it, so glass opacity stays at 0.88 or above and blur at 10px. Allowed on the header, scrims, dropdowns and toasts — never on cards, tables, rows or inputs. `--color-glass` must stay legible with blur disabled entirely.
+
+---
+
+# Motion
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/motion`
+
+Three durations, two curves. Fast enough to read as response, never as a transition you wait through.
+
+## Durations
+
+| Token | Value | Applies to |
+| --- | --- | --- |
+| --dur-1 | 90ms | Press. Buttons and options scale to 0.97 |
+| --dur-2 | 140ms | Hover, colour, focus ring, row highlight |
+| --dur-3 | 200ms | Overlays, disclosure, theme swap |
+
+## Curves
+
+Enter and exit are not the same curve. A decelerating exit feels reluctant — things leaving should accelerate away.
+
+| Token | Curve | Direction |
+| --- | --- | --- |
+| --ease | cubic-bezier(0.16, 1, 0.3, 1) | Enter — settles |
+| --ease-in | cubic-bezier(0.4, 0, 1, 1) | Exit — accelerates |
+
+## Try them
+
+_Rendered example._
+
+```
+Only opacity and transform animate — both composite on the GPU
+and never trigger layout.
+
+Anything that appears reserves its space: the copy check and the
+option tick render at opacity:0 rather than being absent.
+```
+
+> **REDUCED MOTION IS HONOURED**
+>
+> `prefers-reduced-motion: reduce` drops every duration to 0.01ms and removes press transforms. The state change still happens — it just arrives instantly. Nothing disappears.
+
+---
+
+# Layers & breakpoints
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/layers`
+
+Two scales that were previously ad hoc. Every z-index in the system now comes from a named token, and every breakpoint has a name rather than being a number picked at the point of use.
+
+## Layer scale
+
+Seven steps, ten apart. The gaps exist so something can be slipped between two layers without renumbering the rest.
+
+| Token | Value | What sits here |
+| --- | --- | --- |
+| --z-base | 0 | Page content |
+| --z-sticky | 10 | Sticky table headers, shell rules |
+| --z-header | 20 | App header |
+| --z-dropdown | 30 | Select menus, tooltips, popovers |
+| --z-overlay | 40 | Scrims and drawers |
+| --z-modal | 50 | Modals, command palette |
+| --z-toast | 60 | Toasts — always on top, they report on the thing you just did |
+
+> **NO BARE Z-INDEX**
+>
+> A literal `z-index: 9999` is a bug report waiting to happen. If something needs to sit between two layers, add a token — do not invent a number at the call site.
+
+## Breakpoints
+
+Media queries cannot read custom properties, so these are documented rather than enforced. The value of naming them is that everyone reaches for the same four numbers.
+
+| Token | Width | Behaviour change |
+| --- | --- | --- |
+| --bp-sm | 640px | Spec rows stack label-above-value |
+| --bp-md | 900px | Sidebar collapses; tables scroll horizontally |
+| --bp-lg | 1180px | Multi-column layouts become available |
+| --bp-xl | 1320px | Shell reaches max width and gutters appear |
+
+---
+
+# Grid
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/grid`
+
+A 12-column grid on a 4px base. Layouts are composed from column spans, not from arbitrary widths — that is what keeps two pages built months apart looking related.
+
+## Columns
+
+_Rendered example._
+
+```
+12 columns, 24px gutter, 4px base unit.
+
+12 divides by 2, 3, 4 and 6 — halves, thirds, quarters and sixths all
+land on the grid. 10 or 16 columns do not.
+```
+
+## Common spans
+
+_Rendered example._
+
+```
+4-4-4   three metric cards
+8-4     content with a side rail
+12      tables, wizard steps, anything dense
+
+Below --bp-md every span collapses to 12.
+```
+
+## Container widths
+
+| Context | Max width | Why |
+| --- | --- | --- |
+| Reading copy | 68ch | Measure, not pixels — it holds across type sizes |
+| Docs / forms | 940px | Comfortable for a single column of dense content |
+| App shell | 1320px | Beyond this, gutters grow instead of the content |
+| Dashboard | 1400px | Tables earn the extra width |
+
+> **CONTENT STOPS GROWING BEFORE THE VIEWPORT DOES**
+>
+> A line of text 2000px wide is unreadable regardless of font size. Past the maximum, the gutters take the space — which is why the shell has vertical rules rather than a stretched layout.
+
+---
+
+# Icons
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/icons`
+
+Lucide, at a single stroke weight. Icons clarify a label — they never replace one, except where the control is universally understood and carries an aria-label.
+
+## Core set
+
+_Rendered example._
+
+```
+lucide-react, already a dependency.
+
+24x24 viewBox, stroke-width 1.75, round caps and joins.
+Rendered at 16px in dense UI, 20px in chrome, 48px in empty states.
+Always currentColor — never a hard-coded fill.
+```
+
+## Sizes
+
+| Size | Where |
+| --- | --- |
+| 12px | Inside a badge or a mono label |
+| 16px | Table rows, buttons, inline with body text |
+| 20px | Chrome — header, sidebar, toolbars |
+| 48px | Empty states. Hairline weight at this size |
+
+> **ONE WEIGHT, ONE FAMILY**
+>
+> Mixing icon sets is the fastest way to make an interface look assembled rather than designed — differing stroke weights and corner radii read as inconsistency even when nobody can name why. Animated icons follow the same rule: same family, motion only on real state change, never on anything repeated down a list.
+
+---
+
+# Accessibility
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/a11y`
+
+Not a checklist bolted on at the end. Every rule below already constrains a token or a component elsewhere in this system — this page is where they are stated together.
+
+## Contrast
+
+Every foreground/surface pair was computed, not estimated. All 42 clear AA for body text.
+
+| Target | Ratio | Applies to |
+| --- | --- | --- |
+| AA body | 4.5:1 | All text, including state colours on their surface |
+| AA non-text | 3:1 | Categorical dots, focus rings, meaningful boundaries |
+| Decorative | none | Hairline borders — which is why they carry no meaning |
+
+## Focus
+
+2px `accent` ring at 2px offset, on every interactive element. Focus is **accent**; selection is **neutral** — they were both accent once and a keyboard user could not tell them apart.
+
+## Colour is never the only signal
+
+Roughly 1 in 12 people cannot rely on hue. Every state carries a dot, an icon or a text label alongside the colour: `StatusBadge` pairs a dot with mono caps, `Input` errors carry an icon, banners carry both.
+
+## Motion
+
+`prefers-reduced-motion: reduce` drops every duration to 0.01ms and removes press transforms. The state change still happens — it arrives instantly. Never remove the state change itself. Skeleton is the one sanctioned loop, and it falls back to a flat opacity.
+
+## Targets and semantics
+
+| Rule | Why |
+| --- | --- |
+| 44x44px minimum touch target | Below this, taps miss on a phone |
+| Native elements first | `Select` uses a real `<select>` for keyboard, screen-reader and mobile-picker behaviour |
+| Disabled means `disabled` | Styling something to look disabled still lets it be focused and clicked |
+| Tooltips open on focus too | `:has(:focus-visible)`, not hover alone — touch has no hover |
+| Icon-only controls carry `aria-label` | The hamburger and theme toggle both do |
+
+---
+
+# Content
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/content`
+
+The words are part of the system. A component with improvised copy is as inconsistent as one with improvised colour.
+
+## The site does not name the payment rail
+
+These appear nowhere in user-facing copy, metadata, titles or alt text:
+
+`Algorand` · `blockchain` · `crypto` · `stablecoin` · `USDC` · `wallet` · `on-chain` · `web3` · `micropayment` · `gas`
+
+This is positioning, not squeamishness. The audience is a developer who wants an API call to work. The settlement mechanism is an implementation detail that happens to be excellent — leading with it filters out everyone who is not already crypto-native, which is most of the market.
+
+| Instead of | Say |
+| --- | --- |
+| Settles in USDC on Algorand | Metered per request |
+| No wallet needed | No signup, no subscription |
+| Stream micropayments | Pay for exactly what you use |
+| On-chain settlement | Every call is metered and receipted |
+
+Code identifiers are out of scope — `usdcAssetId` is not copy. The ban is on what a reader sees.
+
+## Voice
+
+| Rule | Example |
+| --- | --- |
+| Lead with the mechanism, not the adjective | "Settles in ~4 seconds" beats "lightning fast" |
+| Numbers over claims | If you cannot source a number, cut the sentence |
+| One idea per paragraph | The reader is scanning, not reading |
+| Second person for publishers | "Sell your API by the call" |
+
+## Never
+
+Invented customers, logos, testimonials or usage numbers. Performance claims without a measurement. Any implication of production readiness while the badge says Testnet. Structured data for things not on the page.
+
+> **EMPTY STATES ARE COPY, NOT CHROME**
+>
+> "No APIs published yet" and "No calls in this period" are different situations and get different words and different actions. "No data" is not an empty state.
+
+---
+
+# Brand
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/brand`
+
+The Spigot mark, its colour variants, and the rules that keep it recognisable. A spigot is a tap that controls flow — metering and gatewaying in one word.
+
+## Variants
+
+_Rendered example._
+
+```
+logo.svg        brand blue, for light surfaces
+logo-mono.svg   currentColor — the theme decides
+app/icon.svg    favicon, served automatically by Next
+
+One currentColor file covers black, white and blue. There is no
+separate asset per colour.
+```
+
+## Clearspace
+
+_Rendered example._
+
+```
+Minimum clear space on every side = the height of the mark itself.
+The grid squares here are exactly that unit.
+
+Nothing — text, edge, or another mark — enters that space.
+```
+
+## Lockup
+
+_Rendered example._
+
+```
+Three approved forms. No others.
+
+  Mark only        square slots: favicon, avatar, app icon
+  Mark + wordmark  the default. Header, footer, docs
+  Wordmark only    where the mark already sits directly above
+
+Header lockup: mark 34px, wordmark 15px 600, gap 7px.
+
+The MARK carries the colour; the WORDMARK stays neutral. A blue wordmark
+is a permanent accent block competing with focus rings and primary buttons.
+```
+
+## Misuse
+
+_Rendered example._
+
+```
+Never stretch, rotate, recolour outside the three variants, add effects,
+or place the mark on a busy background.
+```
+
+> **THE MARK IS NOT THE PRODUCT NAME**
+>
+> The protocol is `x402`, an open Coinbase specification. Spigot is built on it and is never named after it. `x402` appears in technical contexts only.
+
+---
+
+# Spec row
+
+> Patterns · Shipped · Spigot design system
+> `/designsystem#/spec-row`
+
+The signature pattern. Label left in mono caps muted, value right in mono tabular. The default way to present label/value data in this app — reach for it before a card.
+
+## Settlement receipt
+
+_Rendered example._
+
+```
+Mobile: the pair stacks label-above-value and long values wrap.
+They never truncate — a truncated hash cannot be compared.
+```
+
+## When to use
+
+- A fixed set of machine values about one subject: a settlement receipt, an endpoint's price and method.
+- A row that needs a control on the right is a **table** row, not a spec row. Prose is body copy.
+
+## Behaviour
+
+- Label left, value right, value in mono tabular. Below `--bp-sm` the value drops under the label rather than wrapping mid-number.
+
+## Content
+
+- An unknown value is `—`. Never `N/A`, never `null`, never blank, because a blank cell reads as a rendering bug.
+
+## Accessibility
+
+- It is a definition list. `<dl>`/`<dt>`/`<dd>`, so the pairs are announced as pairs and not as a run of unrelated text.
+
+---
+
+# Mono label & numbering
+
+> Patterns · Foundation · Spigot design system
+> `/designsystem#/labels`
+
+Small letterspaced mono caps in `muted` above a block. Structural numbering only where the number encodes real sequence.
+
+## Examples
+
+_Rendered example._
+
+```
+text-label text-muted uppercase tracking-[0.09em]
+
+Never number an unordered list — that is the templated pattern
+this system exists to prevent.
+```
+
+## Middle truncation
+
+A transaction hash and a wallet address carry information at both ends: the head identifies, the tail disambiguates. Cutting the tail off makes two different values look identical.
+
+_Rendered example._
+
+```
+One ellipsis glyph (…), never three periods.
+
+Copying yields the full value, never the shortened form.
+The full value is the element's accessible name.
+```
+
+> **NEVER ON PROSE**
+>
+> Middle truncation is for values, not sentences. Cutting the middle out of a sentence destroys its meaning. A sentence that is too long is truncated at the end, or not at all.
+
+## When to use
+
+- Above a block, to name it. As structural numbering only where the number encodes real sequence. Wizard steps do; a feature list does not.
+
+## Behaviour
+
+- Mono caps in `muted`. Never the action role: a button label is normal case, because a label names and an action commits.
+
+## Content
+
+- One or two words. No sentences, no punctuation.
+
+## Accessibility
+
+- The uppercase is styling, not content. Write it normal case in the markup and let `text-transform` do the work, or a screen reader spells it out letter by letter.
+
+---
+
+# Imagery
+
+> Patterns · Foundation · Spigot design system
+> `/designsystem#/imagery`
+
+Dot-matrix primary, SVG line-art secondary. Dot size encodes the value, so the treatment carries data rather than only decorating.
+
+## Dot-matrix
+
+_Rendered example._
+
+```
+Generated in CSS or canvas, never a raster asset.
+A PNG would not respond to the theme switch — the same class of bug
+as the 35 fixed-hex palette values this system replaces.
+```
+
+## Line-art
+
+Hairline SVG with `currentColor` stroke, no fills. Subjects are structural: request/response flow, settlement path, gateway topology. Touch, not texture.
+
+## When to use
+
+- Dot-matrix for a quantity that has a shape. Line-art where a photograph would be a lie. Never stock photography.
+
+## Behaviour
+
+- Deterministic. Every figure is derived from a hash of its input, so the same input always draws the same picture. `Math.random()` would break server rendering anyway.
+
+## Accessibility
+
+- Decorative, so `aria-hidden="true"`. If a figure carries the only copy of a number, that number also appears as text.
+
+---
+
+# Placeholders
+
+> Patterns · Foundation · Spigot design system
+> `/designsystem#/placeholders`
+
+Stand-ins for decisions not yet made — the brand name, the fee, the domain, the logo. All generated in CSS, all theme-responsive, all deliberately conspicuous. A placeholder that looks finished is worse than no placeholder.
+
+## Logo mark
+
+_Rendered example._
+
+```
+A 5x5 dot grid, the house imagery treatment at glyph scale.
+Generated from a fixed bit pattern — deterministic, theme-responsive,
+and obviously provisional.
+
+Never a raster placeholder: a PNG survives into production
+because nothing flags it.
+```
+
+## Image slots
+
+_Rendered example._
+
+```
+Dot field at low density with the intended dimensions labelled.
+Reserve the real aspect ratio — a placeholder of the wrong shape
+hides the layout problem until the asset arrives.
+```
+
+## Copy tokens
+
+_Rendered example._
+
+```
+Unresolved values render in warning colour with a dashed border.
+They are meant to be impossible to miss in a screenshot.
+```
+
+## The tokens
+
+| Token | Replaces | Blocked until |
+| --- | --- | --- |
+| Spigot | Product name in prose, nav, titles | Name chosen |
+| [FEE_PCT] | Platform percentage | Resolved — 3% |
+| spigot.sh | Canonical URL, OG, sitemap | Domain registered |
+| [LOGO] | Real mark | Brand exists |
+
+> **THEY CANNOT SHIP SILENTLY**
+>
+> The bracketed-caps form is greppable and appears in no real code. One command finds every unresolved value:
+
+## When to use
+
+- While the real asset does not exist yet. A placeholder is a promise that something is coming, not a design.
+
+## Behaviour
+
+- Reserves the exact space the real thing will take, so nothing moves when it lands.
+
+## Content
+
+- A placeholder that ships is a bug. Every one of them is tracked.
+
+## Accessibility
+
+- Never `alt=""` on a placeholder standing in for meaningful content. That hides the gap from exactly the users who most need it named.
+
+---
+
+# Button
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/button`
+
+Four variants. Normal case — mono caps is the label role, not the action role.
+
+## Variants
+
+_Rendered example._
+
+```
+<Button variant="primary">Publish API</Button>
+<Button variant="secondary">Cancel</Button>
+<Button variant="ghost">Skip</Button>
+<Button variant="danger">Unpublish</Button>
+```
+
+## Props
+
+| Variant | Rest | Hover | Focus |
+| --- | --- | --- | --- |
+| primary | bg-accent | bg-accent-dim | ring accent |
+| secondary | bg-panel + border | bg-panel-hover | ring accent |
+| ghost | text-muted | text-main | ring accent |
+| danger | bg-error | 85% opacity | ring accent |
+
+## States
+
+_Rendered example._
+
+```
+Focus ring uses accent, never border.
+border is 1.35:1 and would be invisible.
+```
+
+## When to use
+
+- Anything that mutates state: publish, settle, unpublish, top up. Navigation that changes the URL is a link. A button that only navigates loses middle-click and open-in-new-tab.
+- One `primary` per view. It is the accent, the accent is capped at 5% of surface, and a second primary halves the meaning of the first.
+- `danger` is for irreversible or billable actions. Unpublishing an API is danger; cancelling a form is `secondary`.
+
+## Behaviour
+
+- Disable only when the action is genuinely impossible (unverified domain, zero balance), and name the reason next to it. A dimmed button with no reason reads as broken.
+- A button that fires a request stays focusable while it runs, and carries its own loading state. Six views currently place a hand-rolled spinner *beside* a button instead; that is the button's job.
+
+## Content
+
+- Title Case, **Verb + Noun**, naming what happens: `Publish API`, `Top Up Credit`. Never `Submit`, `OK` or `Confirm`.
+- The button verb and its toast verb are the same word. `Publish API` is confirmed by `API published`, not by `Done`.
+- `Cancel` stays literally Cancel.
+
+## Accessibility
+
+- Focus is the accent ring, never the border: `border` is 1.35:1 and would be invisible.
+- An icon-only button carries an `aria-label` naming the action and its target: `Copy publisher ID`, not `Copy`.
+- Never put `aria-label` on a button that already has visible text. It replaces the label rather than adding to it.
+
+---
+
+# Input
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/input`
+
+Label above in mono caps. Errors carry an icon as well as colour.
+
+## States
+
+_Rendered example._
+
+```
+Focus:  border-accent + 1px ring
+Error:  border-error + icon + message below
+
+Colour is never the only signal — roughly 1 in 12 users cannot rely on hue.
+```
+
+## When to use
+
+- One line of free-form text. The moment content can wrap to a second line it is a textarea.
+
+## Behaviour
+
+- Validate on blur, not on every keystroke. Per-keystroke validation flags a half-typed value as wrong.
+- Trim leading and trailing whitespace before submit, so a field of spaces does not pass a required check.
+
+## Content
+
+- The label is a Title Case noun: `Endpoint Name`, `Price Per Call`.
+- The placeholder shows an example value such as `api.example.com`, never an instruction like `Enter your domain`.
+- Validation names the field and the constraint and ends in a full stop. No *please*.
+
+## Accessibility
+
+- The error carries an icon and a message, not only a red border. Roughly one user in twelve cannot rely on hue.
+- Helper text is a sibling element wired through `aria-describedby`, so it is announced with the field rather than after it.
+
+---
+
+# StatusBadge
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/status`
+
+No container. A dot plus text, both in the state colour, mono caps.
+
+## All states
+
+_Rendered example._
+
+```
+<StatusBadge status="settled | pending | failed | draft | archived" />
+
+Without a tint behind it, the state colour's AA ratio is what carries it —
+4.73:1 at worst. The boxed version could hide a weak colour.
+```
+
+## Mapping
+
+| Status | Token |
+| --- | --- |
+| Settled, verified, published, active | success |
+| Pending, provisioning, low balance | warning |
+| Failed, expired, insufficient credit | error |
+| Draft, informational | info |
+| Inactive, archived | muted |
+
+## When to use
+
+- The lifecycle state of one thing: a settlement, a domain check, a publish. A category is a **SkillTag**; a quantity is a number.
+
+## Behaviour
+
+- Tracks state changes, not poll ticks. Re-rendering on every poll makes a state that has not changed appear to flicker.
+
+## Content
+
+- One word, from the canonical set. `Settled`, not `Payment settled`. The row already supplies the noun.
+
+## Accessibility
+
+- The dot is decorative and the word carries the meaning, so every state survives with colour switched off.
+
+---
+
+# SkillTag
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/skilltag`
+
+Two variants. The tag displays; the option is a control and keeps a hit target. Only the dot carries hue — the label stays neutral, because five hues across 19 skills cannot identify anything.
+
+## Tag — display
+
+_Rendered example._
+
+```
+<SkillTag name="Geocoding" />
+
+No container. Tables, cards, API detail.
+Hue assigned by stable hash of the name — never array index.
+```
+
+## Option — control
+
+_Rendered example._
+
+```
+<SkillOption name="Geocoding" selected />
+
+Selected: border-main + bg-panel-hover + check. Neutral, never accent —
+accent is reserved for focus, so both can be visible at once.
+```
+
+## When to use
+
+- A category on a thing, such as the skills an API exposes. Display tags label; option tags are a control.
+
+## Behaviour
+
+- A display tag is never clickable. If the user can act on it, it is a control and it looks like one.
+
+## Content
+
+- Canonical skill names, matching the API vocabulary exactly. A tag that paraphrases is a tag nobody can search for.
+
+---
+
+# Card
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/card`
+
+Panel fill, hairline border, 8px radius, 20–24px padding. No shadow.
+
+## Metric cards
+
+_Rendered example._
+
+```
+bg-panel border border-border rounded-md p-6
+
+Hover only if the card is interactive — then to panel-hover.
+```
+
+## When to use
+
+- A group of related values about one subject. Rows of the same shape are a **table**; key/value metadata is a **spec row**.
+
+## Behaviour
+
+- The border defines the box. `panel` is 1.16:1 against black and cannot separate a surface on its own.
+
+## Content
+
+- A metric card leads with the number in mono tabular, and names the unit in the label rather than inside the value.
+
+---
+
+# Table
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/table`
+
+The densest surface in the app. Hairline separators, no zebra striping, hover raises the row. Machine values in mono tabular.
+
+## Endpoints
+
+_Rendered example._
+
+```
+No zebra striping — not one of the eight table references stripes rows.
+Hover raises to panel-hover. Status is bare coloured text, not a badge,
+so a chip does not repeat on every row.
+
+Mobile: scrolls horizontally with the status column pinned.
+```
+
+## When to use
+
+- Rows of the same shape, where at least one column is worth comparing down the column.
+- One descriptive row with a control beside it is not a table.
+
+## Behaviour
+
+- An empty table renders an **EmptyState** outside the table, not a row that says no data.
+- Numeric columns are mono tabular, so the digits line up and a column can be scanned rather than read.
+
+## Content
+
+- Headers are Title Case nouns. Unknown values are `—`.
+- Relative time up to seven days, then a date: `2m ago`, then `14 Mar 2026`.
+
+## Accessibility
+
+- A sortable header is a button, and it announces the sort it will apply next, not the one already applied.
+
+---
+
+# WizardRail
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/wizard`
+
+Onboarding is 10 steps. A horizontal stepper does not fit a viewport at that count, so the rail is vertical. Count and progress bar together, never either alone.
+
+## Rail
+
+_Rendered example._
+
+```
+Current step: bg-panel-hover + border-border. Neutral, not accent.
+Completed and upcoming steps stay muted.
+```
+
+## When to use
+
+- A linear flow whose steps cannot be reordered, such as the publish sequence. A set of independent settings is not a wizard.
+
+## Behaviour
+
+- The rail shows every step from the start, including ones not yet reachable. Hiding future steps hides how long this is.
+
+## Content
+
+- Steps are numbered because the number encodes real sequence. Titles are **Verb + Noun**.
+
+## Accessibility
+
+- The current step is `aria-current="step"`, and its state is not carried by colour alone.
+
+---
+
+# Modal
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/modal`
+
+Destructive actions sit far left, separated from the safe pair. This app has irreversible operations and they must not sit adjacent to Cancel.
+
+## Live
+
+_Rendered example._
+
+```
+Enter 200ms decelerating: fade + translateY(8px) + scale(0.985)
+Exit accelerates on --ease-in.
+
+Focus trapped, Esc closes, focus returns to the trigger.
+```
+
+## Static
+
+_Rendered example._
+
+## When to use
+
+- A decision that has to block the page. Routine creation belongs on its own route, not behind an overlay.
+
+## Behaviour
+
+- Focus defaults to `Cancel` on anything destructive.
+- Escape and outside-click dismiss, except on the destructive confirmation, where the only ways out are the two buttons.
+- Focus returns to the trigger on close, so a keyboard user does not restart at the top of the page.
+
+## Content
+
+- The title is a Title Case statement, never a question.
+- The primary button repeats the title's verb. `Cancel` stays literally Cancel.
+- An irreversible action ends with *This cannot be undone.*
+
+## Accessibility
+
+- `aria-labelledby` points at the title.
+- After a failure, focus stays inside the modal so the error is reachable; after success it returns to the trigger.
+
+---
+
+# EmptyState
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/empty`
+
+Illustration, heading, one line of explanation, exactly one action. Copy is per-context and never generic — "No data" is not an empty state.
+
+## Variants
+
+_Rendered example._
+
+```
+Six distinct empty screens in the reference set. None says "No data".
+
+404 uses the numeral itself at text-display scale as the artwork.
+```
+
+## When to use
+
+- A surface with nothing in it. Which variant depends on *why* it is empty: nothing published yet, a filter that matched nothing, or a load that failed. Those are three different messages.
+
+## Behaviour
+
+- The action is a real button or link, so it joins the tab order and exposes a role.
+- Never the home for a warning that must persist. An empty state disappears the moment the list fills.
+
+## Content
+
+- The title is Title Case; the description adds something the title did not, rather than restating it.
+- The action is **Verb + Noun**: `Publish An API`. Never `Get Started`.
+
+---
+
+# CodeBlock
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/codeblock`
+
+The most load-bearing component in an API product. Request and response bodies, curl snippets and the x402 payment header all render here. Mono throughout, horizontal scroll, never wrapped — a wrapped JSON body is unreadable.
+
+## Response body
+
+_Rendered example._
+
+```
+Syntax colour uses the CATEGORICAL ramp, not the semantic one.
+A token type is a category, not a health state — colouring a string
+with `success` would imply the string is somehow healthy.
+
+key  cat-1    string  cat-3    number  cat-4    literal  cat-5    punctuation  muted
+```
+
+## Shell
+
+_Rendered example._
+
+```
+Header carries the language label and the copy button.
+Never wrap: horizontal scroll is correct for code.
+```
+
+> **NEVER PRETTY-PRINT A HASH**
+>
+> Transaction IDs and payment hashes render in full, on one line, selectable. Truncation belongs in tables where a value is a reference, never where it is the payload.
+
+## Copy affordance
+
+Three surfaces copy to the clipboard: a code sample, the domain verification token, and this site's own `Copy page as Markdown`. One control, one confirmation, everywhere.
+
+_Rendered example._
+
+```
+Idle:     copy glyph, muted
+Copied:   check glyph, success, for 1.5s
+
+The glyph changes shape as well as colour, so the
+confirmation still reads with hue removed.
+```
+
+> **CONFIRMATION IS A SHAPE, NOT A COLOUR**
+>
+> It reverts after 1.5 seconds: long enough to notice, short enough that the control is ready again before the user is. Nothing about the copy is announced twice: the button label stays put and only the glyph moves.
+
+## When to use
+
+- A response body, a request, or a shell command the reader will copy. A single token inside a sentence is `<code>`, not a block.
+
+## Behaviour
+
+- Code is `white-space: pre` and never reflows. A narrow viewport scrolls it; it does not wrap it.
+- A shell prompt is drawn by the block and is not part of what gets copied.
+
+## Content
+
+- Samples stay runnable. Real values, or placeholders that are obviously placeholders. Never invented syntax that would fail if pasted.
+
+## Accessibility
+
+- The copy control is a real button with a label, and its confirmation changes shape as well as colour.
+
+---
+
+# Skeleton
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/skeleton`
+
+Loading placeholders that match the shape of what is coming. Every view in this app fetches on mount, so this is not optional — a blank panel and a spinner both discard the layout the user is about to read.
+
+## Content
+
+_Rendered example._
+
+```
+bg-panel-hover, rounded-sm, pulsing opacity 1 -> 0.45 over 1.4s
+
+Match the real content's dimensions. A skeleton that is the wrong
+shape causes a layout jump the moment data arrives, which is worse
+than showing nothing.
+```
+
+## Table rows
+
+_Rendered example._
+
+```
+Preserve the column structure. The header renders immediately —
+it is known before the request resolves.
+```
+
+> **THE ONE SANCTIONED LOOP**
+>
+> Motion (§4.4) bans looping animation everywhere else. Skeleton is the deliberate exception: a loading indicator that stops moving reads as frozen. Under `prefers-reduced-motion` the pulse is removed and a flat 0.7 opacity is used instead — still visibly a placeholder, no movement.
+
+## Which loading pattern
+
+Four different waits, four different answers. Six views used to hand-roll `animate-spin`; all of them now use `common/Spinner.tsx`.
+
+| The wait | Use | Why |
+| --- | --- | --- |
+| Data filling a layout whose shape is known | Skeleton Shipped | Reserve the shape and nothing shifts when it lands |
+| One action, one to three seconds | Spinner Shipped | Submit buttons, a row-level retry |
+| Inline in a sentence | Loading dots | `Settling…`, so the wait belongs to the words |
+| The total is knowable | Progress | Import and publish steps. Specified, not built |
+
+> **MOUNT ON START, NOT ON RENDER**
+>
+> A spinner rendered up front and hidden with CSS keeps rotating while it is invisible, so it appears mid-turn the moment it is shown. Mount it when the action starts. For a submit button the spinner belongs *inside* the button, which keeps the control focusable and lets it announce that it is busy.
+
+## When to use
+
+- Async data arriving into a layout whose shape is already known: table rows, a metric row, a publisher header.
+
+## Behaviour
+
+- Matches the final dimensions, so nothing shifts when the data lands.
+- Never permanent decoration, and never a stand-in for an empty state. A list that is empty is empty, not loading.
+
+## Accessibility
+
+- The region is `aria-busy="true"` while loading, and nothing focusable sits inside a skeleton.
+
+---
+
+# Toast & Banner
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/toast`
+
+Two ways to report an outcome. A toast is transient and reports something that just happened; a banner is persistent and reports a condition that is still true.
+
+## Toast — transient
+
+_Rendered example._
+
+```
+Bottom-right stack, newest at the bottom. Enter slides 10px and fades
+over --dur-3. Auto-dismiss 4.5s, or dismissed manually.
+
+z-index: var(--z-toast) — above everything, because a toast reports
+on the action you just took.
+```
+
+## Banner — persistent
+
+_Rendered example._
+
+```
+Inline, above the content it concerns. Solid fill in the state colour,
+fully rounded, with text and dot in --bg so they invert per theme.
+
+The one place rounded-full is used besides avatars.
+```
+
+> **CHOOSING BETWEEN THEM**
+>
+> If the user can do nothing about it and it is already over, toast. If it describes a state they must resolve — low balance, unverified domain, failed provisioning — banner. A toast for a persistent condition disappears before it can be acted on.
+
+## Behaviour
+
+- Fires bottom-right, auto-dismisses at 4.5s, and sits at `--z-toast` above everything else.
+- One toast per flow: the terminal step, not one per stage. A publish that emits four toasts has told the user nothing four times.
+
+## Content
+
+- One sentence, sentence case, no trailing full stop.
+- Completion reads **{Noun} {past participle}**: `API published`, `Payment settled`. Never *successfully*.
+- The toast verb matches the button verb that caused it.
+
+## Accessibility
+
+- The toast region is `aria-live="polite"`.
+- No primary navigation inside a toast. It is gone before a keyboard user reaches it.
+
+---
+
+# Select
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/select`
+
+A native `<select>` with the platform chevron suppressed and ours drawn in. Native is deliberate: it gets keyboard behaviour, screen-reader semantics and the mobile picker for free.
+
+## Default
+
+_Rendered example._
+
+```
+appearance: none + our own chevron, absolutely positioned,
+pointer-events: none so clicks pass through to the select.
+
+Focus: border-accent + 1px ring, same as Input.
+```
+
+> **WHY NOT A CUSTOM DROPDOWN**
+>
+> A custom listbox needs roving tabindex, type-ahead, ARIA wiring and its own mobile behaviour, all of which the native element already has and none of which is visible in a screenshot. Build a custom one only when an option needs rich content — a colour dot and a label are not rich content.
+
+> **EXTRACTED**
+>
+> `common/Select.tsx`, used by all four step forms: `Pricing`, `BasicInfo`, `ApiInfo` and `ImportEndpoints`. The label, error and helper-text slots match `Input`, so a form built from both lines up.
+
+## When to use
+
+- A short fixed list where typing adds nothing. Past roughly ten options the user needs to filter, and a native select stops being the answer.
+
+## Content
+
+- The placeholder option is action-oriented, such as `Select a period`. Never `Choose one…` or the label repeated.
+
+## Accessibility
+
+- Every select has a label. `aria-label` only where there is no visible one.
+
+---
+
+# Tabs
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/tabs`
+
+Two forms. The segmented control switches a view within a panel; the underline form is page-level navigation across dashboard sections.
+
+## Segmented — in-panel
+
+_Rendered example._
+
+```
+Active: bg-bg + border inside a bg-panel track.
+Neutral, never accent — selection is neutral throughout this system (§2.4a).
+```
+
+## Underline — page level
+
+_Rendered example._
+
+```
+Active: text-main + 1px bottom border in main, offset -1px so it
+sits on the container rule rather than beside it.
+```
+
+> **PICK ONE PER SCREEN**
+>
+> Both forms on the same page produces two competing levels of "current". The dashboard uses the underline form; anything nested inside a card uses the segmented form.
+
+## When to use
+
+- Sibling views of one subject inside one page. Moving between unrelated pages is navigation, not tabs.
+
+## Behaviour
+
+- Switching is instant and never waits on a request.
+- The active tab is reflected in the URL, so a view can be linked to and survives a reload.
+
+## Content
+
+- One or two word destination nouns. No counts in the title. The count changes, and the tab width changes with it.
+
+## Accessibility
+
+- Left and Right arrows move between tabs, and the active tab keeps a visible focus ring.
+
+---
+
+# Tooltip
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/tooltip`
+
+Short clarification on hover or focus. Never the only place information lives — a tooltip is invisible on touch and to anyone scanning.
+
+## Default
+
+_Rendered example._
+
+```
+Above the trigger by default; add .below to flip when there is no room.
+Fades and rises 4px over --dur-2. Opens on :hover and :has(:focus-visible).
+
+NOT :focus-within — clicking the trigger focuses it, which would leave the
+tooltip stuck open after the mouse moves away.
+
+z-index: var(--z-dropdown).
+
+Never put a tooltip inside a container with overflow:hidden — it will be
+clipped, and the clipping is invisible until someone hovers.
+```
+
+> **NEVER PUT MEANING ONLY IN A TOOLTIP**
+>
+> Touch devices have no hover. If a value cannot be understood without the tooltip, the tooltip is the wrong component — use help text below the field, or a spec row.
+
+## When to use
+
+- To explain why something exists, or why it is unavailable. Not to repeat a label that is already on screen.
+
+## Behaviour
+
+- Opens on hover *and* on keyboard focus, after a short delay so it does not flash while the pointer crosses it.
+
+## Content
+
+- One sentence or fragment, sentence case. No full stop on a fragment.
+
+## Accessibility
+
+- Never put an action inside a tooltip. It is unreachable on touch.
+- An icon-only trigger carries its own `aria-label`; the tooltip is not a substitute for one.
+
+---
+
+# Avatar
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/avatar`
+
+An uploaded image when there is one; a 5×5 dot grid seeded on the name and the date the entity was created when there is not. One of only two places in this system where `rounded-full` is permitted.
+
+## Sizes & stack
+
+_Rendered example._
+
+```
+28px default, 40px large. 5x5 dot grid mirrored down the centre.
+
+Seed = FNV-1a of `name|createdAt`. The creation date is stored and passed in,
+never read from the clock: two publishers called Acme then differ, and each
+one keeps the same avatar forever.
+
+<Avatar name="Acme" src={logoUrl} seed={createdAt} />
+
+One hue per avatar from the CATEGORICAL ramp, with a second slice of the hash
+varying the weight. Categorical and not semantic, because an identity is a
+category and never a health state.
+```
+
+## When to use
+
+- To identify a person, publisher or team in a row or a header.
+
+## Behaviour
+
+- Image first. The grid is the fallback, not the default, and a broken or slow URL falls back to it rather than to a broken-image glyph, so a dead link degrades to something deliberate instead of something that looks like a bug.
+- Pattern first, hue second. Read the hue alone and two people can look alike; read the pattern and they never do. That ordering is what keeps it safe at 28px, where the grid is legible and the tint is barely a suggestion.
+- The seed is stored, never computed at render. Reading the clock here would draw a different avatar on the server than in the browser, which React reports as a hydration mismatch.
+
+## Content
+
+- Pass the full name, not initials and not a truncation. It is both the seed and the accessible name, and shortening it collides more often.
+
+## Accessibility
+
+- The accessible name is the entity's name, not the word *avatar*.
+
+---
+
+# FileUpload
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/upload`
+
+Drag, drop or browse for one file. Hands the file to the caller and stops there: it does not upload, because the two surfaces that need it send the bytes to different places.
+
+## Drop zone
+
+_Rendered example._
+
+```
+<FileUpload
+  accept=".json,.yaml"
+  maxBytes={2_000_000}
+  hint="JSON or YAML, up to 2 MB"
+  onFile={f => setSpec(f)}
+/>
+
+Idle       dashed border
+Dragging   border-accent + accent/5 fill
+Rejected   border-error + message below
+Chosen     filename, size, and a clear control
+```
+
+> **A DEAD DROP ZONE IS WORSE THAN NONE**
+>
+> The whole area is a real target, and the file input underneath is visually hidden rather than removed, so click, keyboard and the native picker all keep working. An area that looks droppable and does nothing teaches the user that the interface lies.
+
+## When to use
+
+- A file the user has on disk. For a file that already lives at a URL, an **Input** is less work for everyone.
+- One file. Multiple selection needs per-file state and per-file removal, which is a different component.
+
+## Behaviour
+
+- Type and size are checked before anything is read or sent. Rejecting after the upload wastes the wait and the bandwidth.
+- Clearing resets the input value, not just the state. Without that the same file cannot be picked twice in a row, which reads as the control being broken.
+- An image preview is an object URL, revoked when replaced, or the page leaks one per selection.
+
+## Content
+
+- The hint names the accepted types and the size limit before the user picks. A limit discovered only by breaking it is not a limit, it is a trap.
+- The rejection says what was wrong and what was expected: `That file is 4.2 MB. The limit is 2.0 MB.`
+
+## Accessibility
+
+- The input is `sr-only`, never `display:none`, so it keeps its place in the tab order.
+- The rejection is `role="alert"`: it appears after an action and must be heard without moving focus.
+
+---
+
+# Progress
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/progress`
+
+Determinate work whose total is knowable: an upload, a multi-step import, a batch publish.
+
+## Default
+
+_Rendered example._
+
+```
+<Progress value={62} max={100} label="Uploading spec" />
+
+Track  panel-hover      Fill  accent, or a state colour
+Height 6px               Percent in mono tabular
+```
+
+> **USE THE REAL CEILING**
+>
+> Pass the actual total in `max` rather than normalising to 100 at the call site. `value={7} max={9}` is checkable against the thing it describes; `value={78}` is a number nobody can verify.
+
+## When to use
+
+- The total is knowable. If it is not, this is the wrong component: **Spinner** for a short single action, **Skeleton** where the shape of the result is already known.
+
+## Content
+
+- The label names the work, not the mechanism. `Uploading spec`, not `Request in flight`.
+- The percentage is mono tabular, so the number does not jitter as it counts up.
+
+## Accessibility
+
+- `role="progressbar"` with `aria-valuenow`, `aria-valuemin` and `aria-valuemax`. The visible percentage is not enough on its own.
+
+---
+
+# Fieldset
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/fieldset`
+
+Related form controls under one label. A real `<fieldset>` and `<legend>`, not a styled box with a heading.
+
+## Group
+
+_Rendered example._
+
+```
+<Fieldset legend="Settlement" hint="Where payouts land.">
+  <Input label="Wallet Address" />
+  <Select label="Frequency">…</Select>
+</Fieldset>
+```
+
+> **A DIV WITH A HEADING ANNOUNCES NOTHING**
+>
+> The two look identical and behave differently. A screen reader repeats the legend before every field inside a real fieldset, so the user knows which group they are in; with a heading it reads as a flat run of unrelated inputs. Every onboarding step currently hand-rolls the div version.
+
+## When to use
+
+- Two or more fields that only make sense together. A single field does not need a group around it.
+- Radio and checkbox groups always: the legend is the only thing naming what the options belong to.
+
+## Content
+
+- The legend is a Title Case noun with no trailing colon.
+- An error on the fieldset is about the group as a whole. A single field's error belongs on that field, where the fix is.
+
+---
+
+# FileTree
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/filetree`
+
+A hierarchy, for seeing the shape of something imported before committing to it.
+
+## Parsed spec
+
+_Rendered example._
+
+```
+<FileTree nodes={[
+  { name: "/v1", children: [
+    { name: "/geocode", meta: "GET" },
+  ]},
+]} />
+
+Top level open on arrival, deeper levels collapsed.
+```
+
+> **INDENT WITH PADDING, NOT NESTED MARGINS**
+>
+> Nested margins compound, so a deep tree walks off the right edge of its container and the last level is unreadable. Padding computed from the depth keeps every row the full width.
+
+## When to use
+
+- The nesting is the information. A flat list of forty imported routes does not show how they group.
+- For rows of the same shape with values to compare, use a **Table**.
+
+## Behaviour
+
+- The top level opens on arrival so the shape is visible immediately; everything deeper starts collapsed.
+- A folder with an empty children array is still a folder. Absent children marks a leaf.
+
+---
+
+# Pagination
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/pagination`
+
+Numbered pages with a truncating middle. Always paired with a count — "page 3" means nothing without knowing there are nine.
+
+## Default
+
+_Rendered example._
+
+```
+Current page: bg-panel + border, neutral. Disabled: 35% opacity,
+cursor default, and genuinely disabled — not just styled to look it.
+
+Always render the count alongside. "Showing 1-10 of 87" is the
+information; the numbers are only the control.
+```
+
+## When to use
+
+- Moving between pages of the same set. Revealing more of one list is a show-more, not pagination.
+
+## Behaviour
+
+- At the first or last page the slot is empty rather than disabled. An empty rail reads cleaner than a dead link with nowhere to go.
+
+## Content
+
+- The label names the destination. `Previous`, `Next` and the chevron are drawn by the component. Do not write them into the label.
+
+## Accessibility
+
+- Each control announces its direction and its destination, not just *next*.
+

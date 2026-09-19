@@ -1,0 +1,37 @@
+# Select
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/select`
+
+A native `<select>` with the platform chevron suppressed and ours drawn in. Native is deliberate: it gets keyboard behaviour, screen-reader semantics and the mobile picker for free.
+
+## Default
+
+_Rendered example._
+
+```
+appearance: none + our own chevron, absolutely positioned,
+pointer-events: none so clicks pass through to the select.
+
+Focus: border-accent + 1px ring, same as Input.
+```
+
+> **WHY NOT A CUSTOM DROPDOWN**
+>
+> A custom listbox needs roving tabindex, type-ahead, ARIA wiring and its own mobile behaviour, all of which the native element already has and none of which is visible in a screenshot. Build a custom one only when an option needs rich content — a colour dot and a label are not rich content.
+
+> **EXTRACTED**
+>
+> `common/Select.tsx`, used by all four step forms: `Pricing`, `BasicInfo`, `ApiInfo` and `ImportEndpoints`. The label, error and helper-text slots match `Input`, so a form built from both lines up.
+
+## When to use
+
+- A short fixed list where typing adds nothing. Past roughly ten options the user needs to filter, and a native select stops being the answer.
+
+## Content
+
+- The placeholder option is action-oriented, such as `Select a period`. Never `Choose one…` or the label repeated.
+
+## Accessibility
+
+- Every select has a label. `aria-label` only where there is no visible one.

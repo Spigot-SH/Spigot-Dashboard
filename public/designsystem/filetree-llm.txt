@@ -1,0 +1,34 @@
+# FileTree
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/filetree`
+
+A hierarchy, for seeing the shape of something imported before committing to it.
+
+## Parsed spec
+
+_Rendered example._
+
+```
+<FileTree nodes={[
+  { name: "/v1", children: [
+    { name: "/geocode", meta: "GET" },
+  ]},
+]} />
+
+Top level open on arrival, deeper levels collapsed.
+```
+
+> **INDENT WITH PADDING, NOT NESTED MARGINS**
+>
+> Nested margins compound, so a deep tree walks off the right edge of its container and the last level is unreadable. Padding computed from the depth keeps every row the full width.
+
+## When to use
+
+- The nesting is the information. A flat list of forty imported routes does not show how they group.
+- For rows of the same shape with values to compare, use a **Table**.
+
+## Behaviour
+
+- The top level opens on arrival so the shape is visible immediately; everything deeper starts collapsed.
+- A folder with an empty children array is still a folder. Absent children marks a leaf.

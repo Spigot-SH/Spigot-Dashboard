@@ -1,0 +1,31 @@
+# Fieldset
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/fieldset`
+
+Related form controls under one label. A real `<fieldset>` and `<legend>`, not a styled box with a heading.
+
+## Group
+
+_Rendered example._
+
+```
+<Fieldset legend="Settlement" hint="Where payouts land.">
+  <Input label="Wallet Address" />
+  <Select label="Frequency">…</Select>
+</Fieldset>
+```
+
+> **A DIV WITH A HEADING ANNOUNCES NOTHING**
+>
+> The two look identical and behave differently. A screen reader repeats the legend before every field inside a real fieldset, so the user knows which group they are in; with a heading it reads as a flat run of unrelated inputs. Every onboarding step currently hand-rolls the div version.
+
+## When to use
+
+- Two or more fields that only make sense together. A single field does not need a group around it.
+- Radio and checkbox groups always: the legend is the only thing naming what the options belong to.
+
+## Content
+
+- The legend is a Title Case noun with no trailing colon.
+- An error on the fieldset is about the group as a whole. A single field's error belongs on that field, where the fix is.

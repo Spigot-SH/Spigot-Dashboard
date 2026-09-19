@@ -1,0 +1,60 @@
+# Brand
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/brand`
+
+The Spigot mark, its colour variants, and the rules that keep it recognisable. A spigot is a tap that controls flow — metering and gatewaying in one word.
+
+## Variants
+
+_Rendered example._
+
+```
+logo.svg        brand blue, for light surfaces
+logo-mono.svg   currentColor — the theme decides
+app/icon.svg    favicon, served automatically by Next
+
+One currentColor file covers black, white and blue. There is no
+separate asset per colour.
+```
+
+## Clearspace
+
+_Rendered example._
+
+```
+Minimum clear space on every side = the height of the mark itself.
+The grid squares here are exactly that unit.
+
+Nothing — text, edge, or another mark — enters that space.
+```
+
+## Lockup
+
+_Rendered example._
+
+```
+Three approved forms. No others.
+
+  Mark only        square slots: favicon, avatar, app icon
+  Mark + wordmark  the default. Header, footer, docs
+  Wordmark only    where the mark already sits directly above
+
+Header lockup: mark 34px, wordmark 15px 600, gap 7px.
+
+The MARK carries the colour; the WORDMARK stays neutral. A blue wordmark
+is a permanent accent block competing with focus rings and primary buttons.
+```
+
+## Misuse
+
+_Rendered example._
+
+```
+Never stretch, rotate, recolour outside the three variants, add effects,
+or place the mark on a busy background.
+```
+
+> **THE MARK IS NOT THE PRODUCT NAME**
+>
+> The protocol is `x402`, an open Coinbase specification. Spigot is built on it and is never named after it. `x402` appears in technical contexts only.

@@ -1,0 +1,43 @@
+# StatusBadge
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/status`
+
+No container. A dot plus text, both in the state colour, mono caps.
+
+## All states
+
+_Rendered example._
+
+```
+<StatusBadge status="settled | pending | failed | draft | archived" />
+
+Without a tint behind it, the state colour's AA ratio is what carries it —
+4.73:1 at worst. The boxed version could hide a weak colour.
+```
+
+## Mapping
+
+| Status | Token |
+| --- | --- |
+| Settled, verified, published, active | success |
+| Pending, provisioning, low balance | warning |
+| Failed, expired, insufficient credit | error |
+| Draft, informational | info |
+| Inactive, archived | muted |
+
+## When to use
+
+- The lifecycle state of one thing: a settlement, a domain check, a publish. A category is a **SkillTag**; a quantity is a number.
+
+## Behaviour
+
+- Tracks state changes, not poll ticks. Re-rendering on every poll makes a state that has not changed appear to flicker.
+
+## Content
+
+- One word, from the canonical set. `Settled`, not `Payment settled`. The row already supplies the noun.
+
+## Accessibility
+
+- The dot is decorative and the word carries the meaning, so every state survives with colour switched off.

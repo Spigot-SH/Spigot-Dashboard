@@ -1,0 +1,23 @@
+# Depth
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/depth`
+
+In-page surfaces get no shadow — depth is a value shift plus a hairline. Overlays get one shadow token and a frosted scrim.
+
+## Elevation
+
+_Rendered example._
+
+```
+--shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.45)
+--glass-blur: 10px
+
+No sm/md/lg scale. The enforcement grep fails any shadow-{sm,md,lg,xl,2xl}.
+```
+
+## Frosted glass
+
+> **DELIBERATELY WEAK**
+>
+> Every contrast ratio assumes an opaque backdrop. A translucent surface inherits what is behind it, so glass opacity stays at 0.88 or above and blur at 10px. Allowed on the header, scrims, dropdowns and toasts — never on cards, tables, rows or inputs. `--color-glass` must stay legible with blur disabled entirely.

@@ -1,0 +1,28 @@
+# Card
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/card`
+
+Panel fill, hairline border, 8px radius, 20–24px padding. No shadow.
+
+## Metric cards
+
+_Rendered example._
+
+```
+bg-panel border border-border rounded-md p-6
+
+Hover only if the card is interactive — then to panel-hover.
+```
+
+## When to use
+
+- A group of related values about one subject. Rows of the same shape are a **table**; key/value metadata is a **spec row**.
+
+## Behaviour
+
+- The border defines the box. `panel` is 1.16:1 against black and cannot separate a surface on its own.
+
+## Content
+
+- A metric card leads with the number in mono tabular, and names the unit in the label rather than inside the value.

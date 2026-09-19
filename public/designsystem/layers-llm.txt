@@ -1,0 +1,35 @@
+# Layers & breakpoints
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/layers`
+
+Two scales that were previously ad hoc. Every z-index in the system now comes from a named token, and every breakpoint has a name rather than being a number picked at the point of use.
+
+## Layer scale
+
+Seven steps, ten apart. The gaps exist so something can be slipped between two layers without renumbering the rest.
+
+| Token | Value | What sits here |
+| --- | --- | --- |
+| --z-base | 0 | Page content |
+| --z-sticky | 10 | Sticky table headers, shell rules |
+| --z-header | 20 | App header |
+| --z-dropdown | 30 | Select menus, tooltips, popovers |
+| --z-overlay | 40 | Scrims and drawers |
+| --z-modal | 50 | Modals, command palette |
+| --z-toast | 60 | Toasts — always on top, they report on the thing you just did |
+
+> **NO BARE Z-INDEX**
+>
+> A literal `z-index: 9999` is a bug report waiting to happen. If something needs to sit between two layers, add a token — do not invent a number at the call site.
+
+## Breakpoints
+
+Media queries cannot read custom properties, so these are documented rather than enforced. The value of naming them is that everyone reaches for the same four numbers.
+
+| Token | Width | Behaviour change |
+| --- | --- | --- |
+| --bp-sm | 640px | Spec rows stack label-above-value |
+| --bp-md | 900px | Sidebar collapses; tables scroll horizontally |
+| --bp-lg | 1180px | Multi-column layouts become available |
+| --bp-xl | 1320px | Shell reaches max width and gutters appear |

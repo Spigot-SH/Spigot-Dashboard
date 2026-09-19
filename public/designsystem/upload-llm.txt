@@ -1,0 +1,49 @@
+# FileUpload
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/upload`
+
+Drag, drop or browse for one file. Hands the file to the caller and stops there: it does not upload, because the two surfaces that need it send the bytes to different places.
+
+## Drop zone
+
+_Rendered example._
+
+```
+<FileUpload
+  accept=".json,.yaml"
+  maxBytes={2_000_000}
+  hint="JSON or YAML, up to 2 MB"
+  onFile={f => setSpec(f)}
+/>
+
+Idle       dashed border
+Dragging   border-accent + accent/5 fill
+Rejected   border-error + message below
+Chosen     filename, size, and a clear control
+```
+
+> **A DEAD DROP ZONE IS WORSE THAN NONE**
+>
+> The whole area is a real target, and the file input underneath is visually hidden rather than removed, so click, keyboard and the native picker all keep working. An area that looks droppable and does nothing teaches the user that the interface lies.
+
+## When to use
+
+- A file the user has on disk. For a file that already lives at a URL, an **Input** is less work for everyone.
+- One file. Multiple selection needs per-file state and per-file removal, which is a different component.
+
+## Behaviour
+
+- Type and size are checked before anything is read or sent. Rejecting after the upload wastes the wait and the bandwidth.
+- Clearing resets the input value, not just the state. Without that the same file cannot be picked twice in a row, which reads as the control being broken.
+- An image preview is an object URL, revoked when replaced, or the page leaks one per selection.
+
+## Content
+
+- The hint names the accepted types and the size limit before the user picks. A limit discovered only by breaking it is not a limit, it is a trap.
+- The rejection says what was wrong and what was expected: `That file is 4.2 MB. The limit is 2.0 MB.`
+
+## Accessibility
+
+- The input is `sr-only`, never `display:none`, so it keeps its place in the tab order.
+- The rejection is `role="alert"`: it appears after an action and must be heard without moving focus.

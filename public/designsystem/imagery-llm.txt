@@ -1,0 +1,32 @@
+# Imagery
+
+> Patterns · Foundation · Spigot design system
+> `/designsystem#/imagery`
+
+Dot-matrix primary, SVG line-art secondary. Dot size encodes the value, so the treatment carries data rather than only decorating.
+
+## Dot-matrix
+
+_Rendered example._
+
+```
+Generated in CSS or canvas, never a raster asset.
+A PNG would not respond to the theme switch — the same class of bug
+as the 35 fixed-hex palette values this system replaces.
+```
+
+## Line-art
+
+Hairline SVG with `currentColor` stroke, no fills. Subjects are structural: request/response flow, settlement path, gateway topology. Touch, not texture.
+
+## When to use
+
+- Dot-matrix for a quantity that has a shape. Line-art where a photograph would be a lie. Never stock photography.
+
+## Behaviour
+
+- Deterministic. Every figure is derived from a hash of its input, so the same input always draws the same picture. `Math.random()` would break server rendering anyway.
+
+## Accessibility
+
+- Decorative, so `aria-hidden="true"`. If a figure carries the only copy of a number, that number also appears as text.

@@ -1,0 +1,71 @@
+# Adding a page
+
+> Foundations · Foundation · Spigot design system
+> `/designsystem#/contributing`
+
+What has to be true before a page exists, what it must contain, and what to run afterwards. The system documents more than the codebase ships, which is allowed, but only when each page says so.
+
+## Every page declares a status
+
+The chip beside the group name. It is not decoration: it is the difference between a page you can build against and a page that is an argument for what to build.
+
+| Status | Means | Test |
+| --- | --- | --- |
+| Shipped | A primitive exists and the page describes it | components/common/<Name>.tsx |
+| Spec | The page runs ahead of the code. It is a contract, not a description | No primitive. Often a raw element inlined in a view |
+| Foundation | Tokens, rules or voice. There is no primitive to have | Backed by `@theme` or by prose, not by a file |
+
+> **A SPEC PAGE NAMES WHAT IS MISSING**
+>
+> Not in a footnote. A visible note saying which file does not exist and which views are hand-rolling it instead, as the Select page does. A page that quietly describes something unbuilt is the one failure mode this system cannot survive: it makes every other page suspect.
+
+## What a page must contain
+
+- An **eyebrow** naming the group, and a **title** that is the name the code uses. If the page and the file disagree on the name, one of them is wrong.
+- A **lede** of one or two sentences saying what the thing is and the single decision behind it. Not a feature list.
+- At least one **demo**, rendered, with the real tokens. A screenshot or a description is not a demo.
+- Guidance, in the buckets below, but only the buckets that have something true to say.
+
+> **DO NOT MIRROR ANOTHER SYSTEM'S PAGE**
+>
+> Geist's Button page has eleven sections because Vercel needed eleven, not because eleven is correct. A page gets the sections it has been asked for. Speculative structure looks like thoroughness and behaves like debt.
+
+## The four guidance buckets
+
+Always in this order, and never renamed. Omit any bucket with nothing true in it. Twenty of the sixty-seven pages in the system that inspired this have no guidance at all, and that is a signal rather than an omission.
+
+| Bucket | Answers | The tell |
+| --- | --- | --- |
+| When to use | Which component, not how | Always names the sibling to switch to instead |
+| Behaviour | Runtime, state, timing | Defaults, and what not to do automatically |
+| Content | The words in the UI | Casing, sentence shape, forbidden strings |
+| Accessibility | Roles, keys, focus | Required aria, keyboard map, where focus returns |
+
+> **WHEN TO USE IS THE ONE THAT EARNS ITS PLACE**
+>
+> A bucket that only describes the component is worth nothing. The first bullet should send the reader somewhere else when this is the wrong choice. That is what turns a list of components into a decision tree.
+
+## Wiring a new route
+
+Four edits, in this order. The status, icon and title live in one place so the sidebar, the status chip and the generated Markdown cannot drift apart.
+
+_Rendered example._
+
+## The Markdown mirror is generated
+
+Every page is also a `.txt` file, and the whole system is one `llm.txt`. They are build output.
+
+- Run `npm run designsystem:llm` after any content change. Forgetting it leaves the Markdown describing the previous version of the page, which is worse than having no Markdown.
+- Never edit a `-llm.txt` by hand. The next run overwrites it. Change the page.
+- The generator reads `index.html` for content and `app.js` for order and status, so the sidebar and the mirror always agree.
+
+## When not to add a page
+
+- There is no surface for it. A page for a component this product will never render is debt with a table of contents.
+- It duplicates a page that exists. Extend the page instead; two half-pages on one topic are worse than one.
+- It documents a variant rather than a component. Variants are sections.
+- You are matching another design system's page count.
+
+> **IF SOMETHING LOOKS MISSING, SAY SO AND STOP**
+>
+> Naming a gap costs a sentence. Filling it uninvited costs a review and often a revert. The queue of pages that are wanted but not yet earned lives in `DESIGNSYSTEM-PLAN.md`.

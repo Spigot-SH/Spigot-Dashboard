@@ -1,0 +1,34 @@
+# Pagination
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/pagination`
+
+Numbered pages with a truncating middle. Always paired with a count — "page 3" means nothing without knowing there are nine.
+
+## Default
+
+_Rendered example._
+
+```
+Current page: bg-panel + border, neutral. Disabled: 35% opacity,
+cursor default, and genuinely disabled — not just styled to look it.
+
+Always render the count alongside. "Showing 1-10 of 87" is the
+information; the numbers are only the control.
+```
+
+## When to use
+
+- Moving between pages of the same set. Revealing more of one list is a show-more, not pagination.
+
+## Behaviour
+
+- At the first or last page the slot is empty rather than disabled. An empty rail reads cleaner than a dead link with nowhere to go.
+
+## Content
+
+- The label names the destination. `Previous`, `Next` and the chevron are drawn by the component. Do not write them into the label.
+
+## Accessibility
+
+- Each control announces its direction and its destination, not just *next*.

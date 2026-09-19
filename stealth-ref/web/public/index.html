@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stealth · Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --desk:#0c0c0c; --paper:#f6f3ea; --paper2:#ebe5d5; --paper3:#e2dcc9; --ink:#17160f; --soft:#57544a; --faint:#8f8b7d;
+  --blue:#2230df; --blue-d:#1a26b8; --sage:#cad7ab; --sage-d:#a9bd82; --rule:#c9c4b3;
+  --mono:'Space Mono',ui-monospace,'Courier New',monospace;
+  --ok:#1f7a3d; --warn:#b06a00; --bad:#b02020;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.5}
+a{color:var(--blue)}
+.wrap{max-width:1240px;margin:22px auto;padding:0 18px;display:flex;flex-direction:column;gap:16px}
+.paper{background:var(--paper2);border:1px solid #000;border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.5);overflow:hidden}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:15px 20px;border-bottom:1px solid var(--rule);background:linear-gradient(180deg,#faf8f1,var(--paper))}
+.brand{font-weight:700;font-size:17px;letter-spacing:.02em}
+.brand small{display:block;font-weight:400;color:var(--faint);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase}
+.spacer{flex:1}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);display:inline-block;margin-right:6px;vertical-align:middle}
+.dot.on{background:var(--ok)}
+.stat{color:var(--soft);font-size:11.5px}
+.grid{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.seghead{padding:12px 16px;border-bottom:1px solid var(--rule);background:var(--paper);display:flex;align-items:center;gap:10px}
+.seghead b{font-size:13px}
+.seghead .sub{color:var(--faint);font-size:11px;margin-left:auto}
+.body{background:var(--paper);max-height:70vh;overflow:auto}
+table{width:100%;border-collapse:collapse}
+th{position:sticky;top:0;background:var(--paper2);text-align:left;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);padding:8px 10px;border-bottom:1px solid var(--rule)}
+td{padding:7px 10px;border-bottom:1px solid #e7e1d0;vertical-align:top;font-size:12px}
+tr:hover td{background:var(--paper2)}
+.tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;border:1px solid #0002;letter-spacing:.04em}
+.k-prompt{background:#dfe1fb;color:var(--blue-d)} .k-response{background:var(--sage);color:#3a4d1c}
+.k-tool_call{background:var(--paper3);color:var(--ink)} .k-skill_call{background:#f0dcc0;color:var(--warn)}
+.k-intent{background:#d7dbff;color:var(--blue-d)}
+.s-ok{color:var(--ok)} .s-blocked{color:var(--bad);font-weight:700} .s-error{color:var(--bad)}
+.mono-sm{font-size:11px;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;display:block}
+.ctl{padding:14px 16px;background:var(--paper);display:flex;flex-direction:column;gap:9px}
+label.f{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.12em}
+input,select{font-family:var(--mono);font-size:12px;padding:8px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);width:100%}
+input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px}
+.btn{font-family:var(--mono);font-size:12px;font-weight:700;padding:8px 12px;border:1px solid #000;border-radius:6px;background:var(--ink);color:var(--paper);cursor:pointer}
+.btn:hover{background:#000}
+.btn.blue{background:var(--blue);border-color:var(--blue-d)}
+.btn.sm{padding:4px 9px;font-size:11px}
+.btn.off{background:transparent;color:var(--soft);border-color:var(--rule)}
+.btn.off:hover{background:var(--paper2);color:var(--ink)}
+.srv{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;padding:8px 10px 3px}
+.itemrow{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #e7e1d0}
+.itemrow .nm{font-weight:700;font-size:12px}
+.itemrow .ol{color:var(--soft);font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{padding:22px;text-align:center;color:var(--faint);font-size:12px}
+.err{color:var(--bad);font-size:11px;min-height:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="paper">
+    <div class="top">
+      <div class="brand">stealth · console<small>local control plane · rev 0.1</small></div>
+      <div class="spacer"></div>
+      <div class="stat"><span class="dot" id="dot"></span><span id="conn">connecting…</span></div>
+      <div class="stat" id="count">0 events</div>
+      <button class="btn sm off" id="pause">⏸ pause</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT: live log -->
+    <div class="paper">
+      <div class="seghead"><b>Live log</b><span class="sub">prompt · response · tool · skill · intent</span></div>
+      <div class="body">
+        <table>
+          <thead><tr><th>time</th><th>kind</th><th>name</th><th>status</th><th>tok in/out</th><th>cost</th><th>detail</th></tr></thead>
+          <tbody id="log"></tbody>
+        </table>
+        <div class="empty" id="logempty">no events yet — point a client at the proxy or /mcp</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: controls -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="paper">
+        <div class="seghead"><b>Add downstream server</b></div>
+        <div class="ctl">
+          <div><label class="f">name</label><input id="s-name" placeholder="everything" /></div>
+          <div><label class="f">transport</label>
+            <select id="s-transport"><option value="stdio">stdio</option><option value="http">http</option></select>
+          </div>
+          <div><label class="f">url / command</label><input id="s-url" placeholder="npx -y @modelcontextprotocol/server-everything" /></div>
+          <button class="btn blue" id="s-add">connect</button>
+          <div class="err" id="s-err"></div>
+        </div>
+      </div>
+
+      <div class="paper">
+        <div class="seghead"><b>Catalog</b><span class="sub">allow-list</span></div>
+        <div class="body" id="catalog"><div class="empty">no servers yet</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ resume" : "⏸ pause"; };
+
+// auth: send STEALTH_TOKEN (if the server requires it); prompt once on 401.
+const getTok = () => localStorage.getItem("stealth_token") || "";
+async function afetch(url, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), "x-stealth-token": getTok() };
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    const t = window.prompt("This Stealth requires a token (STEALTH_TOKEN):", getTok());
+    if (t !== null) { localStorage.setItem("stealth_token", t.trim()); return afetch(url, opts); }
+  }
+  return r;
+}
+
+function esc(s){ return String(s??"").replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function fmtCost(c){ return (c===null||c===undefined) ? "—" : "$"+Number(c).toFixed(4); }
+function tok(a,b){ return (a==null&&b==null) ? "—" : (a??0)+"/"+(b??0); }
+
+async function loadEvents(){
+  if(paused) return;
+  try{
+    const r = await afetch("/api/events?limit=150"); const j = await r.json();
+    $("dot").classList.add("on"); $("conn").textContent = "connected";
+    const evs = j.events || [];
+    $("count").textContent = evs.length + " events";
+    $("logempty").style.display = evs.length ? "none" : "block";
+    $("log").innerHTML = evs.map(e=>{
+      let detail=""; try{ const p=JSON.parse(e.payload_json||"{}");
+        detail = p.intent ? "intent: "+p.intent : p.text ? p.text : p.query!=null ? "query: "+(p.query||"·")+" ("+p.count+")" : p.args ? JSON.stringify(p.args) : (e.payload_json||"");
+      }catch{ detail=e.payload_json||""; }
+      return `<tr>
+        <td class="mono-sm">${esc((e.ts||"").slice(11,19))}</td>
+        <td><span class="tag k-${esc(e.kind)}">${esc(e.kind)}</span></td>
+        <td>${esc(e.name||"—")}</td>
+        <td class="s-${esc(e.status||"")}">${esc(e.status||"—")}</td>
+        <td class="mono-sm">${tok(e.tokens_in,e.tokens_out)}</td>
+        <td class="mono-sm">${fmtCost(e.cost)}</td>
+        <td><span class="mono-sm">${esc(detail).slice(0,160)}</span></td>
+      </tr>`;
+    }).join("");
+  }catch(err){ $("dot").classList.remove("on"); $("conn").textContent = "offline"; }
+}
+
+async function loadCatalog(){
+  try{
+    const r = await afetch("/api/catalog"); const j = await r.json();
+    const items = j.items || [];
+    if(!items.length){ $("catalog").innerHTML = '<div class="empty">no servers yet — add one above</div>'; return; }
+    const byServer = {};
+    for(const it of items){ (byServer[it.server] ||= []).push(it); }
+    $("catalog").innerHTML = Object.entries(byServer).map(([srv,list])=>
+      `<div class="srv">${esc(srv)}</div>` + list.map(it=>{
+        const on = it.allowed===1;
+        return `<div class="itemrow">
+          <span class="tag k-${it.kind==='skill'?'skill_call':'tool_call'}">${it.kind}</span>
+          <span class="nm">${esc(it.name)}</span>
+          <span class="ol">${esc(it.one_line||"")}</span>
+          <button class="btn sm ${on?'':'off'}" data-kind="${it.kind}" data-name="${esc(it.name)}" data-on="${on?1:0}">${on?'allowed':'allow'}</button>
+        </div>`;
+      }).join("")
+    ).join("");
+    for(const b of $("catalog").querySelectorAll("button[data-name]")){
+      b.onclick = async ()=>{
+        const on = b.dataset.on==="1";
+        await afetch("/api/allow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({kind:b.dataset.kind,name:b.dataset.name,on:!on})});
+        loadCatalog();
+      };
+    }
+  }catch{}
+}
+
+$("s-add").onclick = async ()=>{
+  $("s-err").textContent="";
+  const name=$("s-name").value.trim(), transport=$("s-transport").value, url=$("s-url").value.trim();
+  if(!name||!url){ $("s-err").textContent="name and url required"; return; }
+  $("s-add").textContent="connecting…"; $("s-add").disabled=true;
+  try{
+    const r=await afetch("/api/servers",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,transport,url})});
+    const j=await r.json();
+    if(!j.ok){ $("s-err").textContent=j.error||"failed"; } else { $("s-name").value=""; $("s-url").value=""; loadCatalog(); }
+  }catch(e){ $("s-err").textContent=String(e); }
+  $("s-add").textContent="connect"; $("s-add").disabled=false;
+};
+
+loadEvents(); loadCatalog();
+setInterval(loadEvents, 2000);
+setInterval(loadCatalog, 6000);
+</script>
+</body>
+</html>

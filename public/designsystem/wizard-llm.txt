@@ -1,0 +1,31 @@
+# WizardRail
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/wizard`
+
+Onboarding is 10 steps. A horizontal stepper does not fit a viewport at that count, so the rail is vertical. Count and progress bar together, never either alone.
+
+## Rail
+
+_Rendered example._
+
+```
+Current step: bg-panel-hover + border-border. Neutral, not accent.
+Completed and upcoming steps stay muted.
+```
+
+## When to use
+
+- A linear flow whose steps cannot be reordered, such as the publish sequence. A set of independent settings is not a wizard.
+
+## Behaviour
+
+- The rail shows every step from the start, including ones not yet reachable. Hiding future steps hides how long this is.
+
+## Content
+
+- Steps are numbered because the number encodes real sequence. Titles are **Verb + Noun**.
+
+## Accessibility
+
+- The current step is `aria-current="step"`, and its state is not carried by colour alone.

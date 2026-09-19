@@ -1,0 +1,45 @@
+# Tabs
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/tabs`
+
+Two forms. The segmented control switches a view within a panel; the underline form is page-level navigation across dashboard sections.
+
+## Segmented — in-panel
+
+_Rendered example._
+
+```
+Active: bg-bg + border inside a bg-panel track.
+Neutral, never accent — selection is neutral throughout this system (§2.4a).
+```
+
+## Underline — page level
+
+_Rendered example._
+
+```
+Active: text-main + 1px bottom border in main, offset -1px so it
+sits on the container rule rather than beside it.
+```
+
+> **PICK ONE PER SCREEN**
+>
+> Both forms on the same page produces two competing levels of "current". The dashboard uses the underline form; anything nested inside a card uses the segmented form.
+
+## When to use
+
+- Sibling views of one subject inside one page. Moving between unrelated pages is navigation, not tabs.
+
+## Behaviour
+
+- Switching is instant and never waits on a request.
+- The active tab is reflected in the URL, so a view can be linked to and survives a reload.
+
+## Content
+
+- One or two word destination nouns. No counts in the title. The count changes, and the tab width changes with it.
+
+## Accessibility
+
+- Left and Right arrows move between tabs, and the active tab keeps a visible focus ring.

@@ -1,0 +1,49 @@
+# Toast & Banner
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/toast`
+
+Two ways to report an outcome. A toast is transient and reports something that just happened; a banner is persistent and reports a condition that is still true.
+
+## Toast — transient
+
+_Rendered example._
+
+```
+Bottom-right stack, newest at the bottom. Enter slides 10px and fades
+over --dur-3. Auto-dismiss 4.5s, or dismissed manually.
+
+z-index: var(--z-toast) — above everything, because a toast reports
+on the action you just took.
+```
+
+## Banner — persistent
+
+_Rendered example._
+
+```
+Inline, above the content it concerns. Solid fill in the state colour,
+fully rounded, with text and dot in --bg so they invert per theme.
+
+The one place rounded-full is used besides avatars.
+```
+
+> **CHOOSING BETWEEN THEM**
+>
+> If the user can do nothing about it and it is already over, toast. If it describes a state they must resolve — low balance, unverified domain, failed provisioning — banner. A toast for a persistent condition disappears before it can be acted on.
+
+## Behaviour
+
+- Fires bottom-right, auto-dismisses at 4.5s, and sits at `--z-toast` above everything else.
+- One toast per flow: the terminal step, not one per stage. A publish that emits four toasts has told the user nothing four times.
+
+## Content
+
+- One sentence, sentence case, no trailing full stop.
+- Completion reads **{Noun} {past participle}**: `API published`, `Payment settled`. Never *successfully*.
+- The toast verb matches the button verb that caused it.
+
+## Accessibility
+
+- The toast region is `aria-live="polite"`.
+- No primary navigation inside a toast. It is gone before a keyboard user reaches it.

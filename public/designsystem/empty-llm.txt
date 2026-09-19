@@ -1,0 +1,30 @@
+# EmptyState
+
+> Components · Shipped · Spigot design system
+> `/designsystem#/empty`
+
+Illustration, heading, one line of explanation, exactly one action. Copy is per-context and never generic — "No data" is not an empty state.
+
+## Variants
+
+_Rendered example._
+
+```
+Six distinct empty screens in the reference set. None says "No data".
+
+404 uses the numeral itself at text-display scale as the artwork.
+```
+
+## When to use
+
+- A surface with nothing in it. Which variant depends on *why* it is empty: nothing published yet, a filter that matched nothing, or a load that failed. Those are three different messages.
+
+## Behaviour
+
+- The action is a real button or link, so it joins the tab order and exposes a role.
+- Never the home for a warning that must persist. An empty state disappears the moment the list fills.
+
+## Content
+
+- The title is Title Case; the description adds something the title did not, rather than restating it.
+- The action is **Verb + Noun**: `Publish An API`. Never `Get Started`.

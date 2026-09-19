@@ -1,0 +1,32 @@
+# Spec row
+
+> Patterns · Shipped · Spigot design system
+> `/designsystem#/spec-row`
+
+The signature pattern. Label left in mono caps muted, value right in mono tabular. The default way to present label/value data in this app — reach for it before a card.
+
+## Settlement receipt
+
+_Rendered example._
+
+```
+Mobile: the pair stacks label-above-value and long values wrap.
+They never truncate — a truncated hash cannot be compared.
+```
+
+## When to use
+
+- A fixed set of machine values about one subject: a settlement receipt, an endpoint's price and method.
+- A row that needs a control on the right is a **table** row, not a spec row. Prose is body copy.
+
+## Behaviour
+
+- Label left, value right, value in mono tabular. Below `--bp-sm` the value drops under the label rather than wrapping mid-number.
+
+## Content
+
+- An unknown value is `—`. Never `N/A`, never `null`, never blank, because a blank cell reads as a rendering bug.
+
+## Accessibility
+
+- It is a definition list. `<dl>`/`<dt>`/`<dd>`, so the pairs are announced as pairs and not as a run of unrelated text.
