@@ -28,7 +28,7 @@ If you cannot fill in **Why**, there is no entry to write.
 **Why:** `npm install -D eslint@^10.11.0 @eslint/js@^10.0.1` fails with `ERESOLVE`: the latest `eslint-plugin-react` (7.37.5, peer `^9.7`), `eslint-plugin-import` (2.32.0, peer `^9`) and `eslint-plugin-jsx-a11y` (6.10.2, peer `^9`), all pulled in by `eslint-config-next`, stop at eslint 9. On TypeScript 6.0.3 and SDK 17.1.0, `npm run verify` exits 0 and the review prints 15 passed, 0 failed, 0 unverified. A read-only Horizon testnet call through SDK 17 returned the latest ledger, and the five symbols `freighterWallet.ts` imports are present. Not checked: a Freighter signing round trip, which needs a browser wallet.
 **Rejected:** `--legacy-peer-deps` for eslint 10 (linting through plugins that do not support the host is how false negatives start, the same reason TypeScript 7 was refused); `typescript@7` (`typescript-eslint` supports `<6.1.0`); `@types/node@26` (the runtime is Node 22).
 **Files:** `package.json`, `package-lock.json`, `DECISIONS.md`.
-**Ref:** uncommitted.
+**Ref:** 28a0758.
 
 ## 2026-09-20 — Settings and Analytics show only what the backend returned
 
