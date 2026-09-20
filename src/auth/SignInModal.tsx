@@ -2,7 +2,7 @@
 
 import { errorMessage } from '../lib/errors';
 import React, { useEffect, useRef, useState } from 'react';
-import { Mail, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, KeyRound, ArrowLeft, CheckCircle, Zap } from 'lucide-react';
 import { authApi } from '../api/auth';
 import { useAuth } from './AuthContext';
 import { Spinner } from '../components/common/Spinner';
@@ -38,7 +38,7 @@ const SignInModal: React.FC = () => {
   const [mode, setMode] = useState<Mode>('choose');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'magic' | 'otp' | 'verify' | null>(null);
+  const [busy, setBusy] = useState<'magic' | 'otp' | 'verify' | 'demo' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [devLink, setDevLink] = useState<string | null>(null);
@@ -106,10 +106,14 @@ const SignInModal: React.FC = () => {
       const result = await authApi.requestMagicLink(email);
       setMode('magic-sent');
       if (result.channel === 'console') {
-        setNotice(
-          'Email delivery is not configured — the link was printed to the backend console.',
-        );
-        if (result.devLink) setDevLink(result.devLink);
+        if (result.devLink) {
+          setDevLink(result.devLink);
+          setNotice('Email delivery is not configured — use the direct sign-in button below.');
+        } else {
+          setNotice(
+            'Email delivery is not configured — the link was printed to the backend console.',
+          );
+        }
       }
     } catch (err) {
       setError(errorMessage(err, 'Could not send the sign-in link'));
@@ -125,10 +129,22 @@ const SignInModal: React.FC = () => {
       const result = await authApi.requestOtp(email);
       setMode('otp-code');
       if (result.channel === 'console') {
-        setNotice(
-          'Email delivery is not configured — the code was printed to the backend console.',
-        );
-        if (result.devCode) setCode(result.devCode);
+        if (result.devCode) {
+          setCode(result.devCode);
+          setNotice('Testnet mode: verifying code automatically...');
+          try {
+            await authApi.verifyOtp(email, result.devCode);
+            await refresh();
+            closeSignIn();
+            return;
+          } catch {
+            setNotice('Code auto-filled. Click Verify & Sign in below.');
+          }
+        } else {
+          setNotice(
+            'Email delivery is not configured — the code was printed to the backend console.',
+          );
+        }
       }
     } catch (err) {
       setError(errorMessage(err, 'Could not send the code'));
@@ -230,6 +246,33 @@ const SignInModal: React.FC = () => {
               >
                 {busy === 'otp' ? <Spinner size={15} /> : <KeyRound size={15} />}
                 Send me a 6-digit code
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setEmail('demo@spigot.sh');
+                  setBusy('demo');
+                  setError(null);
+                  try {
+                    const result = await authApi.requestOtp('demo@spigot.sh');
+                    if (result.devCode) {
+                      await authApi.verifyOtp('demo@spigot.sh', result.devCode);
+                      await refresh();
+                      closeSignIn();
+                    } else {
+                      setMode('otp-code');
+                    }
+                  } catch (err) {
+                    setError(errorMessage(err, '1-Click sign-in failed'));
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+                disabled={busy !== null}
+                className={`${buttonClass} bg-panel text-muted border-border hover:text-main text-xs mt-1`}
+              >
+                {busy === 'demo' ? <Spinner size={14} /> : <Zap size={14} />}
+                1-Click Testnet Sign-In (Demo Account)
               </button>
             </div>
           </>
