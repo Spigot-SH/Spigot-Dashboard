@@ -35,10 +35,10 @@ users visit.
 - `NEXT_PUBLIC_GATEWAY_URL` is the gateway origin shown to publishers in the onboarding
   preview. Unset, it shows the Dashboard's own origin — which also works, because `/x402` is
   rewritten to the backend, but the backend domain is the honest answer.
-- **Do not set `NEXT_PUBLIC_BACKEND_URL`.** Next rewrites `/api`, `/x402`, `/nanopay` and `/pay` to
+- **The browser has no backend URL of its own.** Next rewrites `/api` and `/x402` to
   `BACKEND_ORIGIN`, so the browser stays on this origin and the `SameSite=Lax` session cookie
-  is sent on every call. Setting it makes calls cross-origin; the browser drops the cookie —
-  sign-in appears to work and every later request is unauthenticated.
+  is sent on every call. The old `NEXT_PUBLIC_BACKEND_URL` override was removed on 2026-09-20;
+  setting it now does nothing.
 - **Every variable here is frozen at build time, `BACKEND_ORIGIN` included.** `next build` writes
   the rewrite targets into `.next/routes-manifest.json`, and `next start` reads that file, not
   the environment. Set all variables **before the first build**; changing one needs a
@@ -71,7 +71,6 @@ health.
 | Symptom                                              | Cause                                                                                                                                                                                   |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/api/*` returns 500/502, or calls go to `127.0.0.1` | `BACKEND_ORIGIN` unset **at build time** (set it, then redeploy), backend service not named `backend`, backend `PORT` not `4402`, or the two services are in different Railway projects |
-| Signed in, but every request is unauthenticated      | `NEXT_PUBLIC_BACKEND_URL` is set. Unset it and redeploy                                                                                                                                 |
 | Magic link opens the wrong site                      | Backend `APP_BASE_URL` does not match this domain                                                                                                                                       |
 | Build fails on `@walletconnect/*` or `lute-connect`  | A wallet was added without installing its package or removing it from the alias list in `next.config.ts`                                                                                |
 | Build fails type-checking `stealth-ref/`             | `stealth-ref` was removed from `exclude` in `tsconfig.json`                                                                                                                             |

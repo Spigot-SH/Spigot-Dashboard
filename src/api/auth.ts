@@ -1,5 +1,14 @@
 import { BASE_URL } from './client';
 
+/** Know-the-user answers. Values mirror PROFILE_FIELDS in the backend's services/session.ts. */
+export interface Profile {
+  role?: 'developer' | 'founder' | 'ops';
+  intent?: 'sell' | 'call' | 'both';
+  volume?: 'under_10k' | '10k_to_1m' | 'over_1m';
+  payout?: 'none' | 'wallet';
+  skipped?: boolean;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -7,6 +16,8 @@ export interface AuthUser {
   avatarUrl: string | null;
   emailVerified: boolean;
   authProviders: string[];
+  /** Missing when the backend predates the profile column. */
+  profile?: Profile;
 }
 
 export interface WalletInfo {
@@ -97,6 +108,9 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
 export const authApi = {
   me: () => request<SessionState>('/auth/me'),
+
+  updateProfile: (profile: Profile) =>
+    request<{ user: AuthUser }>('/auth/me', { method: 'PATCH', body: JSON.stringify(profile) }),
 
   signInWithGoogle: (credential: string) =>
     request<{ user: AuthUser; isNew: boolean }>('/auth/google', {

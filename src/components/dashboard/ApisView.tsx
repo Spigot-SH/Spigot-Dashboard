@@ -69,7 +69,9 @@ export const ApisView: React.FC<ApisViewProps> = ({ stats, publisherId: _publish
         <Card hoverable>
           <div className="text-xs uppercase tracking-wider text-muted mb-1">Gateway Protocol</div>
           <div className="text-3xl font-semibold text-accent font-mono">x402 / HTTP</div>
-          <div className="text-xs text-muted mt-2">Instant settlement per request</div>
+          <div className="text-xs text-muted mt-2">
+            Each call is paid on chain before it is proxied
+          </div>
         </Card>
 
         <Card hoverable>

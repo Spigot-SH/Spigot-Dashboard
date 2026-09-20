@@ -19,14 +19,14 @@
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
-    "@stellar/stellar-sdk": "^16.2.0",
+    "@stellar/stellar-sdk": "^17.1.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@txnlab/use-wallet-pera": "^5.0.0",
     "@txnlab/use-wallet-react": "^5.0.0",
     "@types/qrcode": "^1.5.6",
-    "@x402/avm": "^2.22.0",
-    "@x402/core": "^2.22.0",
-    "@x402/evm": "^2.22.0",
+    "@x402/avm": "^2.26.0",
+    "@x402/core": "^2.26.0",
+    "@x402/evm": "^2.26.0",
     "lucide-react": "^1.31.0",
     "next": "^16.3.1",
     "qrcode": "^1.5.4",
@@ -44,7 +44,7 @@
     "eslint-config-next": "^16.3.5",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.8",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0"
   }
 }
