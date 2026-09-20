@@ -19,6 +19,8 @@ import { walletNetworkLabel } from '../wallet/walletManager';
 import { Spinner } from '../components/common/Spinner';
 import { Button } from '../components/common/Button';
 import { Select } from '../components/common/Select';
+import { authApi } from '../api/auth';
+import { useAuth } from '../auth/AuthContext';
 import { RazorpayTopUpModal } from './RazorpayTopUpModal';
 import {
   connectInjectedEvmWallet,
@@ -68,6 +70,124 @@ const TopUpPanel: React.FC<Props> = ({ overview, onCredited }) => {
     hasUsdcTrustline: boolean;
   } | null>(null);
   const [connectingFreighter, setConnectingFreighter] = useState(false);
+
+  // Algorand Auto Opt-In state
+  const { wallet, refresh } = useAuth();
+  const [optingInAlgo, setOptingInAlgo] = useState(false);
+  const [algoOptInSuccess, setAlgoOptInSuccess] = useState<string | null>(null);
+  const [algoOptedIn, setAlgoOptedIn] = useState<boolean | null>(null);
+
+  const checkAlgoStatus = useCallback(async () => {
+    if (!activeAccount) {
+      setAlgoOptedIn(null);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `https://testnet-api.algonode.cloud/v2/accounts/${activeAccount.address}`,
+      );
+      const data = await res.json();
+      const hasOptIn =
+        data?.assets?.some((a: { 'asset-id': number }) => a['asset-id'] === 10458941) || false;
+      setAlgoOptedIn(hasOptIn);
+    } catch {
+      // ignore network glitch
+    }
+  }, [activeAccount]);
+
+  useEffect(() => {
+    void checkAlgoStatus();
+  }, [checkAlgoStatus]);
+
+  const handleAutoOptIn = async () => {
+    if (!activeAccount) return;
+    setOptingInAlgo(true);
+    setError(null);
+    setAlgoOptInSuccess(null);
+    try {
+      const algosdkModule = await import('algosdk');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const algosdk = (algosdkModule as any).default || algosdkModule;
+      const algod = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
+      const suggestedParams = await algod.getTransactionParams().do();
+      const txnsToSign: Uint8Array[] = [];
+
+      // 1. Check if custodial receiver needs ALGO min-balance
+      const targetReceiver = overview?.walletAddress || wallet?.address;
+      if (targetReceiver) {
+        try {
+          const recRes = await fetch(
+            `https://testnet-api.algonode.cloud/v2/accounts/${targetReceiver}`,
+          );
+          const recData = await recRes.json();
+          const recAlgo = recData?.amount || 0;
+          if (recAlgo < 200_000) {
+            // Fund 0.25 ALGO (250,000 microALGO) so receiver can hold ASA 10458941
+            const fundTx = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+              sender: activeAccount.address,
+              receiver: targetReceiver,
+              amount: 250_000,
+              suggestedParams,
+            });
+            txnsToSign.push(fundTx.toByte());
+          }
+        } catch (e) {
+          console.warn('Could not check receiver ALGO balance:', e);
+        }
+      }
+
+      // 2. Check if activeAccount itself is opted into USDC
+      try {
+        const senderRes = await fetch(
+          `https://testnet-api.algonode.cloud/v2/accounts/${activeAccount.address}`,
+        );
+        const senderData = await senderRes.json();
+        const hasSenderOptIn = senderData?.assets?.some(
+          (a: { 'asset-id': number }) => a['asset-id'] === 10458941,
+        );
+        if (!hasSenderOptIn) {
+          const optInTx = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+            sender: activeAccount.address,
+            receiver: activeAccount.address,
+            amount: 0,
+            assetIndex: 10458941,
+            suggestedParams,
+          });
+          txnsToSign.push(optInTx.toByte());
+        }
+      } catch (e) {
+        console.warn('Could not check sender opt-in:', e);
+      }
+
+      // If connected wallet needs to sign transactions:
+      if (txnsToSign.length > 0) {
+        const signed = (await signTransactions(txnsToSign)) as (Uint8Array | null)[];
+        for (const s of signed) {
+          if (s) {
+            const { txid } = await algod.sendRawTransaction(s).do();
+            await algosdk.waitForConfirmation(algod, txid, 4);
+          }
+        }
+      }
+
+      // 3. Trigger custodial wallet activation on backend
+      try {
+        await authApi.activateWallet();
+      } catch (actErr) {
+        console.warn('Backend activateWallet notice:', actErr);
+      }
+
+      await refresh();
+      await checkAlgoStatus();
+      setAlgoOptInSuccess(
+        'Successfully opted into USDC (ASA 10458941)! Both connected wallet and receiver are ready.',
+      );
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Auto opt-in failed'));
+    } finally {
+      setOptingInAlgo(false);
+    }
+  };
 
   const copyEvmAddress = () => {
     if (overview?.evmWalletAddress) {
@@ -1174,19 +1294,60 @@ const TopUpPanel: React.FC<Props> = ({ overview, onCredited }) => {
                     Disconnect
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={buyAlgo}
-                  disabled={busy || !chosenTier}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {busy ? <Spinner size={15} /> : <Zap size={15} />}
-                  {busy
-                    ? stageLabel
-                    : chosenTier
-                      ? `Pay ${chosenTier.amountUsdc} USDC on Algorand`
-                      : 'Choose an amount'}
-                </button>
+
+                {algoOptInSuccess && (
+                  <div className="p-3 mb-3 rounded-md bg-success/10 border border-success/30 text-xs text-success flex items-start gap-2">
+                    <CheckCircle size={15} className="shrink-0 mt-0.5" />
+                    <span>{algoOptInSuccess}</span>
+                  </div>
+                )}
+
+                {algoOptedIn === false && (
+                  <div className="p-3 mb-3 rounded-md bg-warning/10 border border-warning/30 text-xs text-warning flex flex-col gap-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <div>
+                        <strong>USDC Opt-In Required:</strong> Algorand accounts must opt into ASA
+                        10458941 before sending or receiving USDC.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAutoOptIn}
+                      disabled={optingInAlgo}
+                      className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded bg-warning text-bg font-semibold text-xs border-0 cursor-pointer hover:opacity-90 disabled:opacity-50"
+                    >
+                      {optingInAlgo ? <Spinner size={13} /> : <Zap size={13} />}
+                      Auto Opt-In Algorand Wallet (1-Click)
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={handleAutoOptIn}
+                    disabled={optingInAlgo}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-medium cursor-pointer border border-border bg-panel hover:bg-panel-hover text-main disabled:opacity-40"
+                  >
+                    {optingInAlgo ? <Spinner size={14} /> : <Zap size={14} />}
+                    Auto Opt-In to USDC (ASA 10458941)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={buyAlgo}
+                    disabled={busy || !chosenTier}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {busy ? <Spinner size={15} /> : <Zap size={15} />}
+                    {busy
+                      ? stageLabel
+                      : chosenTier
+                        ? `Pay ${chosenTier.amountUsdc} USDC on Algorand`
+                        : 'Choose an amount'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

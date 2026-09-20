@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { authApi } from '../api/auth';
 import { creditsApi, CreditsOverview } from '../api/credits';
 import TopUpPanel from '../credits/TopUpPanel';
 import { Spinner } from '../components/common/Spinner';
@@ -41,6 +42,28 @@ export default function Profile() {
   const [freighterAccount, setFreighterAccount] = useState<string | null>(null);
   const [connectingFreighter, setConnectingFreighter] = useState(false);
   const [freighterError, setFreighterError] = useState<string | null>(null);
+  const [activatingAlgo, setActivatingAlgo] = useState(false);
+  const [algoStatusMessage, setAlgoStatusMessage] = useState<string | null>(null);
+
+  const handleActivateAlgo = async () => {
+    setActivatingAlgo(true);
+    setAlgoStatusMessage(null);
+    try {
+      await authApi.activateWallet();
+      await load();
+      setAlgoStatusMessage(
+        'Algorand wallet successfully activated and opted into USDC (ASA 10458941)!',
+      );
+    } catch (err) {
+      setAlgoStatusMessage(
+        err instanceof Error
+          ? err.message
+          : 'Activation failed. Please fund at least 0.1 testnet ALGO to this address first.',
+      );
+    } finally {
+      setActivatingAlgo(false);
+    }
+  };
 
   const handleConnectFreighter = async () => {
     setFreighterError(null);
@@ -341,7 +364,18 @@ export default function Profile() {
         <div className="p-3.5 rounded-md bg-bg border border-border mb-3">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs font-medium text-main">Algorand Custodial Wallet</span>
-            <span className="text-[10px] text-muted uppercase">Algorand Testnet</span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                  wallet?.optedIn
+                    ? 'text-success bg-success/10 border-success/30'
+                    : 'text-warning bg-warning/10 border-warning/30'
+                }`}
+              >
+                {wallet?.optedIn ? 'Opted In' : 'Opt-In Needed'}
+              </span>
+              <span className="text-[10px] text-muted uppercase">Algorand Testnet</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-main break-all flex-1 select-all">
@@ -369,6 +403,25 @@ export default function Profile() {
               </>
             )}
           </div>
+
+          {algoStatusMessage && <p className="text-xs text-muted mt-2 mb-1">{algoStatusMessage}</p>}
+
+          {!wallet?.optedIn && algoAddr && (
+            <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs text-muted">
+                Must opt into ASA 10458941 (USDC) to receive deposits.
+              </span>
+              <button
+                type="button"
+                onClick={handleActivateAlgo}
+                disabled={activatingAlgo}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-panel hover:bg-panel-hover border border-border text-xs text-main cursor-pointer disabled:opacity-50"
+              >
+                {activatingAlgo ? <Spinner size={12} /> : <Zap size={12} />}
+                Auto Opt-In to USDC
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Solana Wallet */}
