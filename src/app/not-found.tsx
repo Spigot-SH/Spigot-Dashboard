@@ -11,7 +11,7 @@ export default function NotFound() {
         href="/"
         className="px-4 py-2 bg-panel border border-border hover:border-main rounded-md text-sm text-main transition-colors"
       >
-        Return to Marketplace
+        Go to the console
       </Link>
     </div>
   );

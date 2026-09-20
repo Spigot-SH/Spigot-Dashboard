@@ -27,7 +27,6 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
 
   const [apiInfo, setApiInfo] = useState<ApiDetail | null>(null);
   const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(null);
-  const [selectedChain, setSelectedChain] = useState<string>('Algorand');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [result, setResult] = useState<ConsumeResult | null>(null);
   const [state, setState] = useState<CallState>('idle');
@@ -74,9 +73,14 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
     setResult(null);
 
     try {
+      /**
+       * No `chain`. The caller does not choose where a call settles, and sending one was not
+       * only jargon on the screen: `backend/src/routes/consume.ts:130` gives an explicit body
+       * param priority over the publisher's own payout wallet, so a picker defaulted to
+       * "Algorand" silently overrode where the publisher had asked to be paid.
+       */
       const response = await authApi.consume(apiSlug, {
         endpointId: selectedEndpointId,
-        chain: selectedChain,
       });
       setResult(response);
       setState(response.ok ? 'success' : 'error');
@@ -110,7 +114,7 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
             href="/"
             className="inline-block px-4 py-2 bg-panel border border-border hover:border-main rounded-md text-sm text-main transition-colors"
           >
-            Browse Marketplace
+            Go to the console
           </Link>
         </Card>
       </div>
@@ -125,8 +129,8 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
     <div className="max-w-[900px] mx-auto p-8">
       <h1 className="text-3xl mb-2 text-main">Test a paid API</h1>
       <p className="text-muted mb-8">
-        One click calls the endpoint and spends your credit. The gateway settles the payment on
-        Algorand and the facilitator covers the network fee — no popup, and you never need ALGO.
+        One click calls the endpoint and spends your credit. There is no wallet popup and no fee to
+        cover: the call is paid from the balance you already hold.
       </p>
 
       {!signedIn ? (
@@ -164,7 +168,7 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
             <div className="flex gap-6 text-sm">
               <div>
                 <span className="text-muted">Balance </span>
-                <span className="font-mono text-main">{(quote?.balance ?? 0).toFixed(2)} USDC</span>
+                <span className="font-mono text-main">${(quote?.balance ?? 0).toFixed(2)}</span>
               </div>
               {quote?.pricePerRequest != null && (
                 <div>
@@ -214,36 +218,11 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
       )}
 
       <Card className="mb-6">
-        <div className="mb-6">
-          <h3 className="text-base mb-3 text-main">Settlement Chain</h3>
-          <select
-            value={selectedChain}
-            onChange={e => setSelectedChain(e.target.value)}
-            className="w-full sm:w-64 px-3 py-2 bg-panel border border-border rounded-md text-sm text-main outline-none focus:border-main"
-          >
-            {[
-              'Algorand',
-              'Solana',
-              'Stellar',
-              'Ethereum',
-              'Base',
-              'Arbitrum',
-              'Optimism',
-              'Avalanche',
-              'Robinhood',
-            ].map(c => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div className="flex items-center justify-between gap-4 flex-wrap pb-2">
           <div>
             <h3 className="text-base m-0 mb-1 text-main">Call and pay</h3>
             <p className="text-xs text-muted m-0 flex items-center gap-1.5">
-              <Fuel size={12} /> Network fee paid by the facilitator
+              <Fuel size={12} /> Metered per request, paid from your credit
             </p>
           </div>
           <Button
@@ -280,13 +259,13 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle size={14} className="text-main" />
               <span className="text-[0.75rem] uppercase tracking-wide text-muted font-medium">
-                Settled on {result.payment.network || selectedChain}
+                Paid
               </span>
             </div>
             <div className="flex gap-8 text-[0.85rem] flex-wrap">
               <div>
                 <span className="text-muted">Paid </span>
-                <span className="font-mono text-main">{result.payment.amountUsdc} USDC</span>
+                <span className="font-mono text-main">${result.payment.amountUsdc}</span>
               </div>
               <div>
                 <span className="text-muted">Latency </span>

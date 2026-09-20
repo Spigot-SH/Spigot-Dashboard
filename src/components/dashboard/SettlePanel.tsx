@@ -33,7 +33,7 @@ const SettlePanel: React.FC<Props> = ({ publisherId, available, onSettled }) => 
       const response = await apiClient.settle(publisherId);
       setResult({
         ok: true,
-        message: `Paid ${Number(response.settlement?.amount ?? 0).toFixed(6)} USDC to your payout address.`,
+        message: `Paid $${Number(response.settlement?.amount ?? 0).toFixed(6)} to your payout address.`,
         explorerUrl: response.explorerUrl,
       });
       onSettled();
@@ -67,7 +67,7 @@ const SettlePanel: React.FC<Props> = ({ publisherId, available, onSettled }) => 
           className="flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy && <Spinner size={15} />}
-          {available > 0 ? `Withdraw ${available.toFixed(4)} USDC` : 'Nothing to withdraw'}
+          {available > 0 ? `Withdraw $${available.toFixed(4)}` : 'Nothing to withdraw'}
         </button>
       </div>
 

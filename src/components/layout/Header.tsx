@@ -1,114 +1,117 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Network, Sun, Moon, LayoutDashboard, Store, User } from 'lucide-react';
+import { Sun, Moon, Box, Search } from 'lucide-react';
 import AccountChip from '../../auth/AccountChip';
 import { useAuth } from '../../auth/AuthContext';
 import { getPublisherId } from '../../api/client';
+import { consoleFallback, useConsoleView } from '../../lib/consoleView';
+import { applyStoredTheme, useTheme } from '../../lib/theme';
+import { Logo } from '../common/Logo';
 
-const THEME_STORAGE_KEY = 'x402_theme';
+/**
+ * Screens with one job: sign in, answer the setup questions.
+ *
+ * They carry their own logo and no nav, so the header stands down and the layout drops the
+ * offset that exists only to clear it. Exported so both decisions read the same list.
+ */
+export const isBareRoute = (pathname: string | null): boolean =>
+  pathname === '/login' || pathname === '/welcome';
 
 const Header: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
-  const { signedIn, publisher, openSignIn } = useAuth();
-  // Starts at the server-rendered default and corrects in the effect below. Reading
-  // localStorage during the initial render would not match the HTML Next sent.
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const { user, signedIn, publisher } = useAuth();
+  const { view, choose } = useConsoleView(consoleFallback(user?.profile?.intent));
+  const { theme, choose: chooseTheme } = useTheme();
 
-  useEffect(() => {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === 'light' || stored === 'dark') setTheme(stored);
-  }, []);
+  // The stored theme has to reach the document once per load. The hook reads the value; this
+  // paints it, and it is idempotent, so a second header would not fight the first.
+  useEffect(applyStoredTheme, []);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  // usePathname is typed nullable because it has no value during prerender.
-  const isMarketplace = pathname === '/';
   const isDashboard = Boolean(pathname?.startsWith('/dashboard'));
-  const isProfile = pathname === '/profile';
+  // Half the sidebar is the offset that puts the nav over the middle of the content rather
+  // than the middle of the window. Both read `--sidebar-w`, so changing the column's width
+  // moves the nav with it. Only from `lg`, because below that there is not enough room for an
+  // absolutely placed nav to clear the logo.
+  const navCentre = isDashboard ? 'lg:left-[calc(50%+var(--sidebar-w)/2)]' : '';
 
-  const handleDashboardClick = () => {
+  const openDashboard = () => {
+    // The console is gated, so send a signed-out visitor to the sign-in page rather than
+    // opening a modal over a page they cannot use.
     if (!signedIn) {
-      openSignIn();
+      router.push('/login?next=%2Fdashboard');
       return;
     }
     const pubId = publisher?.id || getPublisherId();
-    if (pubId) {
-      router.push(`/dashboard/${pubId}`);
-    } else {
-      router.push('/dashboard/active');
-    }
+    router.push(pubId ? `/dashboard/${pubId}` : '/dashboard/active');
   };
+
+  if (isBareRoute(pathname)) return null;
+
+  const pill = (active: boolean) =>
+    `flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium cursor-pointer border ${
+      active
+        ? 'border-border bg-panel text-main'
+        : 'border-transparent bg-transparent text-muted hover:text-main'
+    }`;
 
   return (
     <header className="fixed top-0 inset-x-0 h-16 bg-bg/80 backdrop-blur-md border-b border-border z-50">
-      <div className="flex items-center justify-between h-full max-w-7xl mx-auto px-6">
+      <div className="relative flex h-full items-center justify-between gap-4 px-4 sm:px-6">
         <div
           onClick={() => router.push('/')}
-          className="flex items-center gap-3 text-inherit cursor-pointer group"
+          className="flex cursor-pointer items-center gap-[7px] text-inherit"
         >
-          <div className="w-8 h-8 rounded bg-panel border border-border flex items-center justify-center text-main group-hover:bg-panel-hover group-hover:border-white/20">
-            <Network size={20} />
-          </div>
-          <span className="text-lg tracking-tight text-main">Spigot</span>
+          <Logo size={34} className="text-accent" title="Spigot" />
+          <span className="hidden text-[15px] font-semibold tracking-tight text-main sm:inline">
+            Spigot
+          </span>
         </div>
-        <nav className="flex items-center gap-6">
+
+        {/* Two consoles, so two controls. A third `Dashboard` pill sat here and only told you
+            where you already were, which is what the active state already says. */}
+        <nav
+          className={`absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-xl border border-border bg-panel/40 p-1 ${navCentre}`}
+        >
           <button
             type="button"
-            onClick={() => router.push('/')}
-            className={`flex items-center gap-1.5 text-sm font-medium bg-transparent border-0 cursor-pointer p-0 ${
-              isMarketplace ? 'text-main font-semibold' : 'text-muted hover:text-main'
-            }`}
+            onClick={() => {
+              choose('caller');
+              openDashboard();
+            }}
+            aria-pressed={view === 'caller'}
+            className={pill(view === 'caller')}
           >
-            <Store size={15} />
-            Marketplace
+            <Search size={16} />
+            <span className="hidden sm:inline">Use APIs</span>
           </button>
           <button
             type="button"
-            onClick={handleDashboardClick}
-            className={`flex items-center gap-1.5 text-sm font-medium bg-transparent border-0 cursor-pointer p-0 ${
-              isDashboard ? 'text-main font-semibold' : 'text-muted hover:text-main'
-            }`}
+            onClick={() => {
+              choose('provider');
+              openDashboard();
+            }}
+            aria-pressed={view === 'provider'}
+            className={pill(view === 'provider')}
           >
-            <LayoutDashboard size={15} />
-            Dashboard
+            <Box size={16} />
+            <span className="hidden sm:inline">My APIs</span>
           </button>
+        </nav>
+
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push('/profile')}
-            className={`flex items-center gap-1.5 text-sm font-medium bg-transparent border-0 cursor-pointer p-0 ${
-              isProfile ? 'text-main font-semibold' : 'text-muted hover:text-main'
-            }`}
-          >
-            <User size={15} />
-            Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/start')}
-            className="text-main hover:text-white text-sm font-medium bg-panel px-3 py-1.5 rounded-md border border-border hover:border-white/20 cursor-pointer"
-          >
-            Publish API
-          </button>
-          <button
-            type="button"
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent border border-border text-muted hover:text-main hover:bg-panel-hover cursor-pointer"
-            onClick={toggleTheme}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-transparent bg-transparent text-muted hover:bg-panel hover:text-main"
+            onClick={() => chooseTheme(theme === 'dark' ? 'light' : 'dark')}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           <AccountChip />
-        </nav>
+        </div>
       </div>
     </header>
   );

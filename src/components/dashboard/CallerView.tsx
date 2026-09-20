@@ -1,0 +1,176 @@
+'use client';
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { Card } from '../common/Card';
+import { Button } from '../common/Button';
+import { EmptyState } from '../common/EmptyState';
+import { Table, Th, Td, TdEmpty } from '../common/Table';
+import { SkeletonRows } from '../common/Skeleton';
+import { creditsApi, type CreditsOverview } from '../../api/credits';
+import { errorMessage } from '../../lib/errors';
+import { CreditCard, Wallet } from 'lucide-react';
+import { ConsoleCover, CONSOLE_COVERS } from './ConsoleCover';
+import { AddCreditModal } from '../../credits/TopUpPanel';
+import { formatCredit } from '../../lib/format';
+
+const KIND_LABEL: Record<string, string> = {
+  RECHARGE: 'Top-up',
+  SPEND: 'API call',
+  REFUND: 'Refund',
+  ADJUST: 'Adjustment',
+};
+
+/**
+ * The console for somebody who calls APIs rather than publishes them.
+ *
+ * Every figure is derived from the rows `GET /api/credits` returned — the balance it reports,
+ * and counts and sums over the history it sent. Nothing is defaulted: a failed load shows the
+ * failure and no figures, the same rule the publisher overview follows.
+ */
+export const CallerView: React.FC = () => {
+  const [overview, setOverview] = useState<CreditsOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [addingCredit, setAddingCredit] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setOverview(await creditsApi.overview());
+      setLoadError(null);
+    } catch (e: unknown) {
+      // A failed load is not an empty account. Never fall back to zeros.
+      setOverview(null);
+      setLoadError(errorMessage(e, 'Could not load your credit.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load, attempt]);
+
+  if (loadError) {
+    return (
+      <EmptyState
+        title="Could not load your credit"
+        description={`${loadError} No figures are shown, because none loaded.`}
+        action={
+          <Button variant="primary" size="sm" onClick={() => setAttempt(n => n + 1)}>
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
+
+  const history = overview?.history ?? [];
+  const spends = history.filter(entry => entry.kind === 'SPEND');
+  const spent = spends.reduce((total, entry) => total + Math.abs(entry.amount), 0);
+
+  return (
+    <div className="flex flex-col gap-8">
+      <ConsoleCover
+        src={CONSOLE_COVERS.caller}
+        title="Your calls"
+        subtitle="Credit you have, and every call it has paid for. Calls are metered per request."
+        action={
+          <Button variant="primary" size="sm" onClick={() => setAddingCredit(true)}>
+            <Wallet size={15} className="mr-1.5" /> Add credit
+          </Button>
+        }
+      />
+
+      {/*
+        The same modal `/profile` opens, opened here instead of routing there. It said "Add
+        credit" and then navigated to a page, which made it the third control on this screen
+        pointing at `/profile`, alongside the sidebar row and the account menu. Now it does
+        what it says. `overview` is already loaded here, and the modal needs nothing else.
+      */}
+      <AddCreditModal
+        isOpen={addingCredit}
+        onClose={() => setAddingCredit(false)}
+        overview={overview}
+        onCredited={load}
+      />
+
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+        <Card hoverable className="relative overflow-hidden">
+          <div className="absolute right-0 top-0 p-4 text-accent opacity-10">
+            <CreditCard size={64} />
+          </div>
+          <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
+            Credit available
+          </h3>
+          <div className="text-3xl">{loading ? '' : formatCredit(overview?.balance ?? 0)}</div>
+        </Card>
+
+        <Card hoverable>
+          <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
+            Paid calls recorded
+          </h3>
+          <div className="font-mono text-3xl">{loading ? '' : spends.length.toLocaleString()}</div>
+          <div className="mt-1 text-xs text-muted">In the activity below</div>
+        </Card>
+
+        <Card hoverable>
+          <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
+            Spent on calls
+          </h3>
+          <div className="text-3xl">{loading ? '' : formatCredit(spent)}</div>
+          <div className="mt-1 text-xs text-muted">Sum of the calls below</div>
+        </Card>
+      </div>
+
+      <Card header="Activity" padding="none">
+        <Table>
+          <thead>
+            <tr>
+              <Th>What</Th>
+              <Th>When</Th>
+              <Th numeric>Amount</Th>
+              <Th numeric>Balance after</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <SkeletonRows cols={4} rows={4} />
+            ) : history.length > 0 ? (
+              history.map(entry => (
+                <tr key={entry.id}>
+                  <Td>{entry.description || KIND_LABEL[entry.kind] || entry.kind}</Td>
+                  <Td>{new Date(entry.created_at).toLocaleString()}</Td>
+                  <Td numeric className={entry.amount >= 0 ? 'text-accent font-medium' : ''}>
+                    {entry.amount >= 0 ? '+' : '-'}
+                    {formatCredit(Math.abs(entry.amount))}
+                  </Td>
+                  <Td numeric mono>
+                    {formatCredit(entry.balance_after)}
+                  </Td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <TdEmpty colSpan={4}>
+                  <div className="py-6 text-center">
+                    <p className="mb-2">No calls yet</p>
+                    {/* There is no listing in this repo to link to. Saying where an API link
+                        comes from is honest; a button to a page that 404s is not. */}
+                    <p className="text-xs text-muted">
+                      Open an API&apos;s link to make your first call. Each one is metered per
+                      request and paid from the credit above.
+                    </p>
+                  </div>
+                </TdEmpty>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </Card>
+    </div>
+  );
+};
+
+export default CallerView;

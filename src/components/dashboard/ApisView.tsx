@@ -146,7 +146,7 @@ export const ApisView: React.FC<ApisViewProps> = ({ stats, publisherId: _publish
                       {(ep.request_count || ep.requests || 0).toLocaleString()}
                     </Td>
                     <Td numeric className="font-mono text-accent font-medium">
-                      {(ep.total_revenue || ep.revenue || 0).toFixed(4)} USDC
+                      ${(ep.total_revenue || ep.revenue || 0).toFixed(4)}
                     </Td>
                     <Td>
                       <button

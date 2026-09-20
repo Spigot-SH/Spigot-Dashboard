@@ -21,3 +21,15 @@ export function truncateMiddle(value: string, head = 6, tail = 6): string {
   if (value.length <= head + tail + 1) return value;
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
+
+/**
+ * A credit balance, as the user reads it.
+ *
+ * Four decimal places, everywhere, because calls are priced below a cent and a balance
+ * rounded to `$0.00` reads as empty when it is not. The number had been rendered at two,
+ * four and six places in different components, and the account menu managed two of those
+ * in one component: `$0.00` on the chip and `$0.000000` in the panel it opens.
+ */
+export const CREDIT_DP = 4;
+
+export const formatCredit = (amount: number): string => `$${amount.toFixed(CREDIT_DP)}`;

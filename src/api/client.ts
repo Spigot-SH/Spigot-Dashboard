@@ -190,19 +190,6 @@ export interface DashboardResponse {
   settlements?: DashboardSettlementRow[];
 }
 
-export interface MarketplaceApi {
-  id: string;
-  name: string;
-  slug: string;
-  publisherName: string;
-  description: string;
-  pricePerRequest: number;
-  /** null until the API has had a health check. Never a default. */
-  avgLatency: number | null;
-  uptime: number | null;
-  skills: string[];
-}
-
 /** Body accepted by `POST /apis/:id/pricing`. */
 export interface PricingPayload {
   model: 'PAY_PER_USE' | 'SUBSCRIPTION';
@@ -366,12 +353,6 @@ export const apiClient = {
       headers: { ...authHeaders() },
     });
     if (!res.ok) throw new Error(`Could not read the payout wallet (${res.status})`);
-    return res.json();
-  },
-
-  async getApis(): Promise<MarketplaceApi[]> {
-    const res = await fetch(`${BASE_URL}/apis`);
-    if (!res.ok) throw new Error('Failed to list APIs');
     return res.json();
   },
 

@@ -22,10 +22,25 @@ const VOLUME_COPY = {
   over_1m: 'over 1 million',
 } as const;
 
+/**
+ * One opening line per role, and the compiler keeps it that way: the lookup below is indexed
+ * by `Profile['role']`, so adding a role to `PROFILE_FIELDS` without a line here fails the
+ * type check rather than rendering `undefined`.
+ *
+ * Six is the number of steps the checklist actually has. Every line says the same true thing
+ * from the angle that role cares about.
+ */
 const ROLE_INTRO = {
   developer: 'Six steps from an API key to your first paid call.',
   founder: 'Six steps from an account to your first paid call.',
+  product: 'Six steps from an account to a priced, published endpoint.',
+  marketing: 'Six steps to an endpoint you can put in front of people.',
+  sales: 'Six steps to something you can demo and quote a price for.',
   ops: 'Six steps from an account to your first settlement.',
+  data: 'Six steps to an endpoint reporting requests, latency and revenue.',
+  finance: 'Six steps from an account to a payout address that settles.',
+  student: 'Six steps from an account to your first paid call.',
+  other: 'Six steps from an account to your first paid call.',
 } as const;
 
 export default function Start() {
@@ -142,15 +157,6 @@ export default function Start() {
       ) : null,
     },
   ];
-
-  // Someone who asked for payouts sees the wallet step right after the account step.
-  if (profile.payout === 'wallet') {
-    const wallet = steps.splice(
-      steps.findIndex(s => s.key === 'wallet'),
-      1,
-    )[0];
-    steps.splice(1, 0, wallet);
-  }
 
   return (
     <div className="max-w-2xl mx-auto mt-8 flex flex-col gap-4">

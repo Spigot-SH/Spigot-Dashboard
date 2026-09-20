@@ -24,7 +24,11 @@ import SettlePanel from '../components/dashboard/SettlePanel';
 import { ApisView } from '../components/dashboard/ApisView';
 import { AnalyticsView } from '../components/dashboard/AnalyticsView';
 import { SettingsView } from '../components/dashboard/SettingsView';
+import { CallerView } from '../components/dashboard/CallerView';
+import { ConsoleCover, CONSOLE_COVERS } from '../components/dashboard/ConsoleCover';
 import { useAuth } from '../auth/AuthContext';
+import { consoleFallback, useConsoleView } from '../lib/consoleView';
+import { Logo } from '../components/common/Logo';
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -61,12 +65,15 @@ function settlementStatus(status: unknown): 'PUBLISHED' | 'PENDING' | 'OFFLINE' 
 const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, publisher, refresh, signedIn, openSignIn } = useAuth();
+  const { user, publisher } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   // A failed load is not an empty account: never show zeros for it.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The switch is in the header now, so the answer lives outside this component, and the
+  // fallback is derived in one place so the two cannot disagree on the first paint.
+  const { view } = useConsoleView(consoleFallback(user?.profile?.intent));
 
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;
@@ -79,25 +86,19 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   useEffect(() => {
     let isMounted = true;
 
+    // The caller console reads its own data. Do not ask for a publisher dashboard the person
+    // may not have — that request is what used to auto-create a publisher account for them.
+    if (view !== 'provider') {
+      setLoading(false);
+      return;
+    }
+
     const fetchStats = async () => {
       try {
         const targetId = publisherId || 'active';
-        let raw = await apiClient.getDashboard(targetId);
-
-        // Auto-register publisher for signed-in user if not yet registered
-        if (raw?.error && signedIn && user) {
-          try {
-            const name = user.email ? user.email.split('@')[0] : 'My Publisher';
-            const pub = await apiClient.registerPublisher({ name });
-            if (pub.id) {
-              setPublisherId(pub.id);
-            }
-            await refresh();
-            raw = await apiClient.getDashboard(pub.id || targetId);
-          } catch (regErr: unknown) {
-            console.warn('Auto publisher registration attempt handled:', regErr);
-          }
-        }
+        // Read only. Opening a page must never create a publisher account behind someone's
+        // back — `/start` asks first, and the empty state below links to it.
+        const raw = await apiClient.getDashboard(targetId);
 
         if (!isMounted) return;
 
@@ -130,15 +131,13 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
           setLoadError(null);
         } else {
           setStats(EMPTY_STATS);
-          // Signed out is the guest view. Signed in with an error is a failed load.
-          setLoadError(signedIn ? raw?.error || 'Could not load your dashboard.' : null);
+          setLoadError(raw?.error || 'Could not load your dashboard.');
         }
         setLoading(false);
       } catch (err: unknown) {
         if (isMounted) {
           setStats(EMPTY_STATS);
-          // Signed out, the 401 is expected: that is the guest view, not a failed load.
-          setLoadError(signedIn ? errorMessage(err, 'Could not load your dashboard.') : null);
+          setLoadError(errorMessage(err, 'Could not load your dashboard.'));
           setLoading(false);
         }
       }
@@ -148,7 +147,26 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     return () => {
       isMounted = false;
     };
-  }, [publisherId, refreshKey, signedIn, user, refresh]);
+  }, [publisherId, refreshKey, view]);
+
+  const effectivePublisherId = getPublisherId() || publisherId || 'active';
+  // Signed in with no publisher: there is nothing to load yet, so say that, not an error.
+  const needsAccount = !publisher;
+  // The route is gated, so a signed-out visitor never gets here. Figures wait on a real load.
+  const showFigures = !loadError && !needsAccount && Boolean(stats);
+
+  if (view === 'caller') {
+    return (
+      <div className="flex">
+        <Sidebar publisherId={effectivePublisherId} view="caller" />
+        <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-8 py-8">
+          <div className="mx-auto max-w-[1400px]">
+            <CallerView />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !stats) {
     return (
@@ -164,54 +182,19 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     );
   }
 
-  const effectivePublisherId = getPublisherId() || publisherId || 'active';
-  // Signed in with no publisher: there is nothing to load yet, so say that, not an error.
-  const needsAccount = signedIn && !publisher;
-  // Signed out there are no figures to show. Zeros would read as someone's real account.
-  const showFigures = signedIn && !loadError && !needsAccount;
-
   return (
     <div className="flex">
       <Sidebar publisherId={effectivePublisherId} />
 
-      <div className="flex-1 p-8 overflow-y-auto h-[calc(100vh-64px)]">
+      <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-8 py-8">
         <div className="max-w-[1400px] mx-auto">
-          {/* Guest notification banner */}
-          {!signedIn && (
-            <div className="mb-6 p-4 rounded-lg bg-panel border border-border flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <span className="px-2 py-0.5 rounded text-xs bg-accent/20 text-accent font-medium uppercase tracking-wider">
-                  Guest Mode
-                </span>
-                <span className="text-sm text-main">
-                  Sign in with email to link your Algorand payout wallet, register new endpoints,
-                  and collect USDC revenue.
-                </span>
-              </div>
-              <Button variant="primary" size="sm" onClick={openSignIn}>
-                Sign In
-              </Button>
-            </div>
-          )}
-
-          {!signedIn && (
-            <EmptyState
-              title="Sign in to see your dashboard"
-              description="Balances, requests and settlements appear here once you sign in and create a publisher account."
-              action={
-                <Button variant="primary" size="sm" onClick={openSignIn}>
-                  Sign in
-                </Button>
-              }
-            />
-          )}
-
           {needsAccount && (
             <EmptyState
+              icon={<Logo size={56} className="text-accent" />}
               title="No publisher account yet"
-              description="Your dashboard starts once you create one. It takes one click."
+              description="Your publisher console starts once you create one. It takes one click. Only calling APIs? Switch to Use APIs above."
               action={
-                <Button variant="primary" size="sm" onClick={() => router.push('/start')}>
+                <Button variant="primary" onClick={() => router.push('/start')}>
                   Set up as a provider
                 </Button>
               }
@@ -243,22 +226,15 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
 
           {showFigures && activeSection === 'overview' && (
             <>
-              <div className="flex justify-between items-end mb-8">
-                <div>
-                  <h1 className="text-3xl mb-1 text-accent">Publisher Dashboard</h1>
-                  <p className="text-muted">
-                    Welcome back. Here&apos;s real-time telemetry and revenue performance for your
-                    APIs.
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 bg-panel px-4 py-2 rounded-lg border border-border">
-                  <span className="text-sm font-medium">
-                    {stats.health.status
-                      ? `Last health check: ${stats.health.status}`
-                      : 'No health check has run yet'}
-                  </span>
-                </div>
-              </div>
+              <ConsoleCover
+                src={CONSOLE_COVERS.provider}
+                title="Your APIs"
+                subtitle={
+                  stats.health.status
+                    ? `What your endpoints have earned and served. Last health check: ${stats.health.status}.`
+                    : 'What your endpoints have earned and served. No health check has run yet.'
+                }
+              />
 
               <SettlePanel
                 publisherId={effectivePublisherId}
@@ -276,8 +252,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                     Available Balance
                   </h3>
                   <div className="text-3xl flex items-baseline gap-2">
-                    {(stats.availableBalance ?? 0).toFixed(4)}{' '}
-                    <span className="text-base text-muted font-normal">USDC</span>
+                    ${(stats.availableBalance ?? 0).toFixed(4)}
                   </div>
                 </Card>
 
@@ -289,8 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                     Pending Balance
                   </h3>
                   <div className="text-3xl flex items-baseline gap-2">
-                    {(stats.pendingBalance ?? 0).toFixed(4)}{' '}
-                    <span className="text-base text-muted font-normal">USDC</span>
+                    ${(stats.pendingBalance ?? 0).toFixed(4)}
                   </div>
                 </Card>
 
@@ -345,7 +319,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                           <Th>Endpoint Path</Th>
                           <Th>Method</Th>
                           <Th numeric>Requests</Th>
-                          <Th numeric>Revenue (USDC)</Th>
+                          <Th numeric>Revenue</Th>
                           <Th numeric>Avg Latency</Th>
                         </tr>
                       </thead>
@@ -365,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                                 </Td>
                                 <Td numeric>{reqCount.toLocaleString()}</Td>
                                 <Td numeric className="text-accent font-medium">
-                                  {rev.toFixed(4)} USDC
+                                  ${rev.toFixed(4)}
                                 </Td>
                                 <Td numeric mono>
                                   {Math.round(lat)}ms
@@ -398,7 +372,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                       <thead>
                         <tr>
                           <Th>Date</Th>
-                          <Th numeric>Amount (USDC)</Th>
+                          <Th numeric>Amount</Th>
                           <Th>Tx Hash</Th>
                           <Th>Status</Th>
                         </tr>
@@ -415,7 +389,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                               <tr key={i}>
                                 <Td>{dateStr.slice(0, 10)}</Td>
                                 <Td numeric className="font-medium">
-                                  {amt.toFixed(4)} USDC
+                                  ${amt.toFixed(4)}
                                 </Td>
                                 <Td mono className="text-accent" title={tx}>
                                   {truncateMiddle(tx)}
@@ -459,7 +433,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className="text-accent text-sm font-medium">+{amt} USDC</div>
+                                <div className="text-accent text-sm font-medium">+${amt}</div>
                                 <div className="text-xs text-muted mt-1">
                                   {tx.status || 'CONFIRMED'}
                                 </div>

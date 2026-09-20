@@ -1,7 +1,34 @@
 /**
- * Browser EVM wallet integration for MetaMask, Coinbase Wallet, Rabby, etc.
- * Supports chain switching and EIP-712/EIP-3009 gasless payment payload generation.
+ * EVM wallet integration for MetaMask, Coinbase Wallet, Rabby and, over WalletConnect, the
+ * wallets that live on a phone. Supports chain switching and EIP-712/EIP-3009 gasless payment
+ * payload generation.
+ *
+ * Every call here goes through `activeProvider()` rather than reaching for `window.ethereum`
+ * directly. Three functions used to read that global independently, which is why a phone
+ * wallet could not be supported without touching all three: the provider is a value, not a
+ * place.
  */
+
+/** The EIP-1193 surface this module needs. Both an injected wallet and WalletConnect have it. */
+export interface Eip1193Provider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  disconnect?: () => Promise<void>;
+}
+
+export type EvmConnection = 'injected' | 'walletconnect';
+
+let provider: Eip1193Provider | null = null;
+let connection: EvmConnection | null = null;
+
+const injected = (): Eip1193Provider | undefined =>
+  typeof window === 'undefined'
+    ? undefined
+    : (window as unknown as { ethereum?: Eip1193Provider }).ethereum;
+
+/** Whichever provider the user connected with, or the injected one if they never chose. */
+const activeProvider = (): Eip1193Provider | undefined => provider || injected();
+
+export const activeEvmConnection = (): EvmConnection | null => connection;
 
 export interface EvmChainConfig {
   key: string;
@@ -77,43 +104,81 @@ export const EVM_TESTNET_CHAINS: Record<string, EvmChainConfig> = {
   },
 };
 
-export const hasInjectedEvmProvider = (): boolean => {
-  return (
-    typeof window !== 'undefined' && Boolean((window as unknown as { ethereum?: unknown }).ethereum)
-  );
-};
+export const hasInjectedEvmProvider = (): boolean => Boolean(injected());
 
 export const connectInjectedEvmWallet = async (): Promise<string> => {
-  if (
-    typeof window === 'undefined' ||
-    !(
-      window as unknown as {
-        ethereum?: { request: (args: { method: string }) => Promise<string[]> };
-      }
-    ).ethereum
-  ) {
+  const ethereum = injected();
+  if (!ethereum) {
     throw new Error('No EVM wallet detected. Please install MetaMask, Coinbase Wallet, or Rabby.');
   }
 
-  const ethereum = (
-    window as unknown as { ethereum: { request: (args: { method: string }) => Promise<string[]> } }
-  ).ethereum;
-  const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+  const accounts = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[];
 
   if (!accounts || !accounts[0]) {
     throw new Error('No EVM account selected in wallet');
   }
 
+  provider = ethereum;
+  connection = 'injected';
   return accounts[0];
 };
 
+/**
+ * Connect a wallet that is not in this browser, over WalletConnect v2.
+ *
+ * Imported at call time, not at module load. The WalletConnect provider is a large tree and
+ * most visitors never open this tab, so it is code-split behind the click that needs it.
+ *
+ * Every testnet chain is offered in `optionalChains` rather than `chains`, because a required
+ * chain the wallet does not know makes it refuse the session outright. The chain the payment
+ * needs is switched to afterwards by `switchOrAddEvmChain`, the same as for an injected wallet.
+ */
+export const connectWalletConnectEvmWallet = async (projectId: string): Promise<string> => {
+  if (!projectId) {
+    throw new Error('WalletConnect is not configured for this deployment.');
+  }
+
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : 'https://spigot.sh');
+
+  const wc = await EthereumProvider.init({
+    projectId,
+    showQrModal: true,
+    optionalChains: Object.values(EVM_TESTNET_CHAINS).map(c => c.chainId) as [number, ...number[]],
+    metadata: {
+      name: 'Spigot',
+      description: 'APIs, metered per call.',
+      url: appUrl,
+      icons: [`${appUrl}/logo-mono.svg`],
+    },
+  });
+
+  await wc.connect();
+  const accounts = (await wc.request({ method: 'eth_requestAccounts' })) as string[];
+  if (!accounts || !accounts[0]) {
+    throw new Error('No EVM account selected in wallet');
+  }
+
+  provider = wc as unknown as Eip1193Provider;
+  connection = 'walletconnect';
+  return accounts[0];
+};
+
+/** Drop the session so the next connect starts clean, and forget the provider either way. */
+export const disconnectEvmWallet = async (): Promise<void> => {
+  try {
+    if (connection === 'walletconnect') await provider?.disconnect?.();
+  } catch (error) {
+    console.warn('EVM wallet disconnect failed:', error);
+  }
+  provider = null;
+  connection = null;
+};
+
 export const switchOrAddEvmChain = async (chain: EvmChainConfig): Promise<void> => {
-  if (typeof window === 'undefined') return;
-  const ethereum = (
-    window as unknown as {
-      ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
-    }
-  ).ethereum;
+  const ethereum = activeProvider();
   if (!ethereum) return;
 
   const hexChainId = `0x${chain.chainId.toString(16)}`;
@@ -155,7 +220,7 @@ export const signExactEvmPayment = async (
   const { createWalletClient, custom } = await import('viem');
   const { ExactEvmScheme } = await import('@x402/evm/exact/client');
 
-  const ethereum = (window as unknown as { ethereum?: unknown }).ethereum;
+  const ethereum = activeProvider();
   if (!ethereum) {
     throw new Error('No EVM wallet available to sign payment');
   }

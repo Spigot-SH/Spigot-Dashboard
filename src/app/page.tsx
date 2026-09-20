@@ -1,20 +1,15 @@
-import type { Metadata } from 'next';
-import Marketplace from '../views/Marketplace';
-import { getMarketplaceApis } from '../api/marketplace';
+import { Spinner } from '../components/common/Spinner';
 
 /**
- * Server component. `/` is the only public route, so it is the only thing a crawler or an AI
- * assistant can read — the listing has to be in the HTML, not fetched after hydration.
+ * The console root. It renders nothing but the wait.
+ *
+ * `ConsoleGate` in `app/providers.tsx` sends a signed-out visitor to `/login` and a signed-in
+ * one to `/dashboard`, so there is no content here to show and no point prerendering any.
  */
-export const metadata: Metadata = {
-  title: 'Paid APIs, metered per call',
-  description:
-    'Browse APIs you can call without a subscription or a signup. Publishers list any HTTP endpoint and set a price per request — you pay only for the calls you make.',
-};
-
-export const revalidate = 0;
-
-export default async function Page() {
-  const apis = await getMarketplaceApis();
-  return <Marketplace initialApis={apis} />;
+export default function Page() {
+  return (
+    <div className="flex flex-1 items-center justify-center py-20">
+      <Spinner size={24} className="text-muted" />
+    </div>
+  );
 }

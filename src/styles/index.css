@@ -58,6 +58,10 @@
      nobody knows what it was meant to beat. If something needs to sit between
      two layers, add a token here rather than inventing a number at the call
      site.                                                                     */
+  /* The console sidebar. The header centres its nav on the content beside it, which is half
+     this value, so both read it from here rather than each carrying its own copy. */
+  --sidebar-w: 14rem;
+
   --z-index-sticky: 10;
   --z-index-header: 20;
   --z-index-dropdown: 30;
@@ -77,6 +81,13 @@
     }
     50% {
       opacity: 0.45;
+    }
+  }
+
+  /* One-shot. Used by the sign-in artwork so the picture arrives instead of snapping in. */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
     }
   }
 

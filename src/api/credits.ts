@@ -1,4 +1,4 @@
-import { BASE_URL } from './client';
+import { request } from './request';
 
 export interface Tier {
   id: string;
@@ -86,31 +86,6 @@ export interface RazorpayResult {
   walletAddress?: string;
   duplicate?: boolean;
 }
-
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-    ...init,
-  });
-  const text = await res.text();
-  let body: unknown;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = { error: text };
-  }
-  if (!res.ok) {
-    const fields =
-      body && typeof body === 'object' ? (body as { error?: unknown; message?: unknown }) : {};
-    const reported = typeof fields.error === 'string' ? fields.error : fields.message;
-    throw Object.assign(
-      new Error(typeof reported === 'string' ? reported : `Request failed (${res.status})`),
-      { body, status: res.status },
-    );
-  }
-  return body as T;
-};
 
 export const creditsApi = {
   overview: () => request<CreditsOverview>('/credits'),

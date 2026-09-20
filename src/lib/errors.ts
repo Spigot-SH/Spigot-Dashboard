@@ -27,6 +27,20 @@ interface ApiErrorBody {
 }
 
 /**
+ * How much of a secondary clause a user is shown.
+ *
+ * `reason` and `details` come straight off whatever the backend was talking to, so their
+ * length is not bounded by anything the UI controls. A failed treasury top-up returned a
+ * thousand characters of Algorand node output, carrying an internal account address, and the
+ * panel printed all of it. The first sentence is the part a user can act on; the rest belongs
+ * in the console, where the network response already is.
+ */
+const DETAIL_LIMIT = 140;
+
+const clip = (value: string): string =>
+  value.length <= DETAIL_LIMIT ? value : `${value.slice(0, DETAIL_LIMIT).trimEnd()}…`;
+
+/**
  * Best available message for a failed API call.
  *
  * The backend returns its useful text in the response body — `error`, `reason` or `details` —
@@ -38,14 +52,14 @@ export const apiErrorMessage = (error: unknown, fallback = 'Something went wrong
     const body = (error as { body?: unknown }).body as ApiErrorBody | undefined;
     if (body && typeof body === 'object') {
       if (typeof body.error === 'string' && typeof body.reason === 'string' && body.reason) {
-        return `${body.error}: ${body.reason}`;
+        return `${body.error}: ${clip(body.reason)}`;
       }
       if (typeof body.error === 'string' && typeof body.details === 'string' && body.details) {
-        return `${body.error}: ${body.details}`;
+        return `${body.error}: ${clip(body.details)}`;
       }
       for (const key of ['message', 'error', 'reason', 'details'] as const) {
         const value = body[key];
-        if (typeof value === 'string' && value) return value;
+        if (typeof value === 'string' && value) return clip(value);
       }
     }
   }

@@ -1,8 +1,18 @@
-import { BASE_URL } from './client';
+import { request } from './request';
 
 /** Know-the-user answers. Values mirror PROFILE_FIELDS in the backend's services/session.ts. */
 export interface Profile {
-  role?: 'developer' | 'founder' | 'ops';
+  role?:
+    | 'developer'
+    | 'founder'
+    | 'product'
+    | 'marketing'
+    | 'sales'
+    | 'ops'
+    | 'data'
+    | 'finance'
+    | 'student'
+    | 'other';
   intent?: 'sell' | 'call' | 'both';
   volume?: 'under_10k' | '10k_to_1m' | 'over_1m';
   payout?: 'none' | 'wallet';
@@ -76,35 +86,6 @@ export interface Quote {
   canPay: boolean;
   callsAffordable: number;
 }
-
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    // The session lives in an httpOnly cookie; it must ride along with every call.
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-    ...init,
-  });
-
-  const text = await res.text();
-  let body: unknown;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = { error: text };
-  }
-
-  if (!res.ok) {
-    const reported =
-      body && typeof body === 'object' && 'error' in body
-        ? (body as { error?: unknown }).error
-        : undefined;
-    throw Object.assign(
-      new Error(typeof reported === 'string' ? reported : `Request failed (${res.status})`),
-      { status: res.status, body },
-    );
-  }
-  return body as T;
-};
 
 export const authApi = {
   me: () => request<SessionState>('/auth/me'),

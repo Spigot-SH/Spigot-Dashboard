@@ -1,27 +1,32 @@
 'use client';
 
-import { apiErrorMessage } from '../lib/errors';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useWallet } from '@txnlab/use-wallet-react';
 import {
-  Wallet,
-  CheckCircle,
   AlertCircle,
+  ArrowLeft,
+  CheckCircle,
+  CreditCard,
   ExternalLink,
-  Zap,
-  Smartphone,
-  Copy,
-  Check,
   Gift,
+  QrCode,
+  Wallet,
 } from 'lucide-react';
 import { creditsApi, CreditsOverview, Tier } from '../api/credits';
-import { walletNetworkLabel } from '../wallet/walletManager';
-import { Spinner } from '../components/common/Spinner';
+import { apiErrorMessage, errorMessage } from '../lib/errors';
+import {
+  hasWalletConnect,
+  isTestnetProfile,
+  walletConnectProjectId,
+} from '../wallet/walletManager';
 import { Button } from '../components/common/Button';
+import { Modal } from '../components/common/Modal';
 import { Select } from '../components/common/Select';
-import { RazorpayTopUpModal } from './RazorpayTopUpModal';
 import {
   connectInjectedEvmWallet,
+  connectWalletConnectEvmWallet,
+  disconnectEvmWallet,
   switchOrAddEvmChain,
   signExactEvmPayment,
   EVM_TESTNET_CHAINS,
@@ -32,36 +37,167 @@ interface Props {
   onCredited: () => void;
 }
 
-type Stage = 'idle' | 'quoting' | 'signing' | 'confirming' | 'done';
-type FundingMethod = 'treasury' | 'algorand' | 'evm' | 'solana' | 'stellar' | 'fiat';
+type Stage = 'idle' | 'quoting' | 'signing' | 'confirming';
+type Step = 'amount' | 'method' | 'crypto';
+type WalletKind = 'algorand' | 'evm' | 'stellar';
 
-const TopUpPanel: React.FC<Props> = ({ overview, onCredited }) => {
+const RAZORPAY_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
+
+/** What Razorpay's checkout handler hands back once the payer completes the flow. */
+interface RazorpayHandlerResponse {
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  razorpay_signature?: string;
+}
+
+interface RazorpayCheckout {
+  open: () => void;
+}
+
+interface RazorpayConstructor {
+  new (options: Record<string, unknown>): RazorpayCheckout;
+}
+
+declare global {
+  interface Window {
+    Razorpay?: RazorpayConstructor;
+  }
+}
+
+/**
+ * Wrap a signed payload in the envelope the gateway expects.
+ *
+ * Every wallet produces a different proof; the envelope around it is identical, and writing it
+ * out per wallet is how one of them ended up carrying a string nothing had signed.
+ */
+const encodePayment = (network: string, payload: unknown): string =>
+  btoa(JSON.stringify({ x402Version: 2, scheme: 'exact', network, payload }));
+
+/**
+ * Brand marks live in `public/dashboard/logos/`, one SVG per name below.
+ *
+ * None of them are in the repo, and nothing in the dependency tree ships chain or payment
+ * marks either. Hand-drawing an approximation of somebody's brand is worse than drawing
+ * nothing, so `BrandLogo` renders nothing when the file is absent and the card falls back to
+ * its words. Dropping a file in is the whole change; no code moves.
+ *
+ * Wallet marks are the exception and are not listed here: `@txnlab/use-wallet-pera` and
+ * `@txnlab/use-wallet-walletconnect` ship their own as `w.metadata.icon`, so those are real
+ * today and come straight off the adapter.
+ */
+const LOGO = (name: string) => `/dashboard/logos/${name}.svg`;
+
+const NETWORKS: { key: WalletKind; name: string; logo: string }[] = [
+  { key: 'algorand', name: 'Algorand', logo: LOGO('algorand') },
+  { key: 'evm', name: 'Ethereum and L2s', logo: LOGO('ethereum') },
+  { key: 'stellar', name: 'Stellar', logo: LOGO('stellar') },
+];
+
+/** The mark if its file is there, nothing if it is not. Never a stand-in shape. */
+const BrandLogo: React.FC<{ src: string; size?: number }> = ({ src, size = 22 }) => {
+  const [missing, setMissing] = useState(false);
+  if (missing) return null;
+  return (
+    <Image
+      src={src}
+      alt=""
+      aria-hidden="true"
+      width={size}
+      height={size}
+      // A missing file is the expected state until the assets land, so it is handled rather
+      // than logged: the card falls back to its words and the layout does not shift.
+      onError={() => setMissing(true)}
+      style={{ width: size, height: size }}
+      className="object-contain"
+      unoptimized
+    />
+  );
+};
+
+/**
+ * A large pickable card. The method step is a short stack of these, so the choice is the screen.
+ *
+ * `whitespace-normal` is a deliberate opt-out from the rule at `src/styles/index.css:207`,
+ * which sets `white-space: nowrap` on every `button` so that a control's label cannot wrap and
+ * change the control's height. That rule is right for a label and wrong here: this button's
+ * second line is body copy, and without the opt-out it ran 743px wide inside a 510px modal and
+ * gave the dialog a horizontal scrollbar. The card's height is meant to follow its text.
+ */
+const Choice: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  hint: string;
+  onClick: () => void;
+  disabled?: boolean;
+  /** Brand marks for what this choice actually uses. Absent when none are available. */
+  marks?: React.ReactNode;
+}> = ({ icon, title, hint, onClick, disabled, marks }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className="flex w-full cursor-pointer items-start gap-3 whitespace-normal rounded-lg border border-border bg-bg p-4 text-left hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    <span className="mt-0.5 shrink-0 text-muted">{icon}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-sm font-medium text-main">{title}</span>
+      <span className="mt-0.5 block text-xs leading-relaxed text-muted">{hint}</span>
+    </span>
+    {marks && <span className="ml-2 flex shrink-0 items-center gap-1.5 self-center">{marks}</span>}
+  </button>
+);
+
+const ConnectedRow: React.FC<{ address: string; onDisconnect: () => void }> = ({
+  address,
+  onDisconnect,
+}) => (
+  <div className="flex items-center justify-between gap-3 text-xs text-muted">
+    <span className="font-mono">
+      {address.slice(0, 8)}…{address.slice(-6)}
+    </span>
+    <button
+      type="button"
+      onClick={onDisconnect}
+      className="cursor-pointer border-0 bg-transparent p-0 text-xs text-muted hover:text-main"
+    >
+      Disconnect
+    </button>
+  </div>
+);
+
+/**
+ * Adding credit, as a modal in three steps: how much, how to pay, and for crypto, which wallet.
+ *
+ * Settling the amount first is what lets every payment path read one number. Each method used
+ * to carry its own copy of the amount buttons, which is how the card modal came to offer
+ * $5/$10/$25/$50 while the server's tiers were $5/$20/$50.
+ *
+ * Razorpay's checkout opens over this modal rather than inside a second one. It is a hosted
+ * overlay of its own, and a modal within a modal has two Escape keys and one backdrop.
+ *
+ * The caller reads dollars throughout. The chain is named in one place, the wallet step,
+ * because that is the only decision where it changes their answer.
+ */
+export const AddCreditModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  overview: CreditsOverview | null;
+  onCredited: () => void;
+}> = ({ isOpen, onClose, overview, onCredited }) => {
   const { activeAccount, signTransactions, wallets } = useWallet();
-  const [fundingMethod, setFundingMethod] = useState<FundingMethod>('treasury');
+
+  const [step, setStep] = useState<Step>('amount');
+  const [walletKind, setWalletKind] = useState<WalletKind>('algorand');
   const [selected, setSelected] = useState<string>('starter');
-  const [customAmount, setCustomAmount] = useState('');
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [copiedEvm, setCopiedEvm] = useState(false);
-  const [copiedSolana, setCopiedSolana] = useState(false);
-  const [copiedStellar, setCopiedStellar] = useState(false);
-  const [receipt, setReceipt] = useState<{ credited: number; explorerUrl: string } | null>(null);
-  const [showRazorpayModal, setShowRazorpayModal] = useState(false);
+  const [receipt, setReceipt] = useState<{ credited: number; explorerUrl?: string } | null>(null);
 
-  // Treasury Top-Up state
-  const [treasuryChain, setTreasuryChain] = useState<string>('algorand');
+  const [evmChain, setEvmChain] = useState<string>('base');
+  const [evmAccount, setEvmAccount] = useState<string | null>(null);
+  const [connectingEvm, setConnectingEvm] = useState<'injected' | 'walletconnect' | null>(null);
 
-  // EVM Wallet state
-  const [selectedEvmChain, setSelectedEvmChain] = useState<string>('base');
-  const [connectedEvmAccount, setConnectedEvmAccount] = useState<string | null>(null);
-  const [connectingEvm, setConnectingEvm] = useState(false);
-
-  // Solana Wallet state
-  const [connectedSolanaAccount, setConnectedSolanaAccount] = useState<string | null>(null);
-  const [connectingSolana, setConnectingSolana] = useState(false);
-
-  // Stellar Freighter Wallet state
-  const [connectedFreighterAccount, setConnectedFreighterAccount] = useState<string | null>(null);
+  const [freighterAccount, setFreighterAccount] = useState<string | null>(null);
   const [freighterBalances, setFreighterBalances] = useState<{
     xlm: string;
     usdc: string;
@@ -69,1174 +205,583 @@ const TopUpPanel: React.FC<Props> = ({ overview, onCredited }) => {
   } | null>(null);
   const [connectingFreighter, setConnectingFreighter] = useState(false);
 
-  const copyEvmAddress = () => {
-    if (overview?.evmWalletAddress) {
-      navigator.clipboard.writeText(overview.evmWalletAddress);
-      setCopiedEvm(true);
-      setTimeout(() => setCopiedEvm(false), 2000);
-    }
-  };
+  // Razorpay's checkout is a hosted script, so it can only be attached from the browser. The
+  // modal opening is what pulls it in; a visitor who never tops up never downloads it.
+  const razorpayRequested = useRef(false);
+  useEffect(() => {
+    if (!isOpen || razorpayRequested.current) return;
+    razorpayRequested.current = true;
+    if (document.getElementById('razorpay-checkout-js')) return;
+    const script = document.createElement('script');
+    script.id = 'razorpay-checkout-js';
+    script.src = RAZORPAY_SRC;
+    script.async = true;
+    document.body.appendChild(script);
+  }, [isOpen]);
 
-  const copySolanaAddress = () => {
-    if (overview?.solanaWalletAddress) {
-      navigator.clipboard.writeText(overview.solanaWalletAddress);
-      setCopiedSolana(true);
-      setTimeout(() => setCopiedSolana(false), 2000);
+  useEffect(() => {
+    if (overview?.tiers.length && !overview.tiers.some(t => t.id === selected)) {
+      setSelected(overview.tiers[0].id);
     }
-  };
+  }, [overview, selected]);
 
-  const copyStellarAddress = () => {
-    if (overview?.stellarWalletAddress) {
-      navigator.clipboard.writeText(overview.stellarWalletAddress);
-      setCopiedStellar(true);
-      setTimeout(() => setCopiedStellar(false), 2000);
-    }
-  };
+  /**
+   * The amount is always one of the server's tiers, never a number typed here.
+   *
+   * A custom field used to sit beside them, which meant the client had to re-check
+   * `overview.custom.min`/`max` before every request and the modal opened on whatever had been
+   * picked last. Three fixed amounts need neither. `overview.custom` is still served, and
+   * nothing in this repo reads it now.
+   */
+  const chosenTier: Tier | undefined = useMemo(
+    () => overview?.tiers.find(t => t.id === selected),
+    [selected, overview?.tiers],
+  );
 
-  const handleConnectEvm = async () => {
+  const busy = stage !== 'idle';
+  const stageLabel = {
+    quoting: 'Preparing payment…',
+    signing: 'Approve in your wallet…',
+    confirming: 'Adding the credit…',
+  }[stage as 'quoting' | 'signing' | 'confirming'];
+
+  const finish = useCallback(
+    (credited: number, explorerUrl?: string) => {
+      setReceipt({ credited, explorerUrl });
+      setStage('idle');
+      onCredited();
+    },
+    [onCredited],
+  );
+
+  const payByCard = useCallback(async () => {
+    if (!chosenTier) return;
     setError(null);
-    setConnectingEvm(true);
-    try {
-      const address = await connectInjectedEvmWallet();
-      setConnectedEvmAccount(address);
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Could not connect EVM wallet'));
-    } finally {
-      setConnectingEvm(false);
-    }
-  };
+    setStage('confirming');
 
-  const handleDisconnectEvm = () => {
-    setConnectedEvmAccount(null);
-  };
-
-  const handleConnectSolana = async () => {
-    setError(null);
-    setConnectingSolana(true);
     try {
-      if (typeof window === 'undefined') throw new Error('Window not available');
-      const solana = (
-        window as unknown as {
-          solana?: { connect: () => Promise<{ publicKey: { toString: () => string } }> };
-        }
-      ).solana;
-      if (!solana) {
-        throw new Error('Solana wallet (Phantom/Solflare) not detected in browser');
+      // The backend opens the order and owns the amount. Everything the popup is told, the
+      // key, the order id and the value in paise, comes back from that call. No rupee figure
+      // is computed here: this flow used to print `amount * 87.5` as a quoted price.
+      const order = await creditsApi.razorpayOrder(chosenTier.amountUsdc);
+      if (!window.Razorpay) {
+        throw new Error('Razorpay checkout could not be loaded. Check your connection.');
       }
-      const res = await solana.connect();
-      const pubkey = res.publicKey.toString();
-      setConnectedSolanaAccount(pubkey);
+
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        order_id: order.orderId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        name: 'Spigot',
+        description: `$${order.amountUsdc} of credit`,
+        handler: async (response: RazorpayHandlerResponse) => {
+          try {
+            const result = await creditsApi.razorpayVerify({
+              razorpayOrderId: response.razorpay_order_id || '',
+              razorpayPaymentId: response.razorpay_payment_id || '',
+              razorpaySignature: response.razorpay_signature || '',
+            });
+            if (result.duplicate) {
+              setError('This payment was already credited.');
+              setStage('idle');
+              return;
+            }
+            finish(result.credited);
+          } catch (verifyError) {
+            setError(errorMessage(verifyError));
+            setStage('idle');
+          }
+        },
+        modal: { ondismiss: () => setStage('idle') },
+      });
+
+      checkout.open();
     } catch (err) {
-      setError(apiErrorMessage(err, 'Could not connect Solana wallet'));
+      setError(apiErrorMessage(err, 'The payment could not be started.'));
+      setStage('idle');
+    }
+  }, [chosenTier, finish]);
+
+  const addTestCredit = useCallback(async () => {
+    if (!chosenTier) return;
+    setError(null);
+    setStage('confirming');
+    try {
+      const res = await creditsApi.treasuryTopUp(selected);
+      finish(res.credited);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Test credit could not be added.'));
+      setStage('idle');
+    }
+  }, [chosenTier, selected, finish]);
+
+  const connectEvm = async (how: 'injected' | 'walletconnect') => {
+    setError(null);
+    setConnectingEvm(how);
+    try {
+      setEvmAccount(
+        how === 'injected'
+          ? await connectInjectedEvmWallet()
+          : await connectWalletConnectEvmWallet(walletConnectProjectId),
+      );
+    } catch (err) {
+      setError(apiErrorMessage(err, 'That wallet could not be connected.'));
     } finally {
-      setConnectingSolana(false);
+      setConnectingEvm(null);
     }
   };
 
-  const handleDisconnectSolana = () => {
-    setConnectedSolanaAccount(null);
-  };
-
-  const handleConnectFreighter = async () => {
+  const connectFreighter = async () => {
     setError(null);
     setConnectingFreighter(true);
     try {
       const { connectFreighterWallet, getFreighterBalances } =
         await import('../wallet/freighterWallet');
       const address = await connectFreighterWallet();
-      setConnectedFreighterAccount(address);
-      const balances = await getFreighterBalances(address);
-      setFreighterBalances(balances);
+      setFreighterAccount(address);
+      setFreighterBalances(await getFreighterBalances(address));
     } catch (err) {
-      setError(apiErrorMessage(err, 'Could not connect Freighter wallet'));
+      setError(apiErrorMessage(err, 'Freighter could not be connected.'));
     } finally {
       setConnectingFreighter(false);
     }
   };
 
-  const handleDisconnectFreighter = () => {
-    setConnectedFreighterAccount(null);
-    setFreighterBalances(null);
-  };
-
-  useEffect(() => {
-    if (
-      overview?.tiers.length &&
-      !overview.tiers.some(t => t.id === selected) &&
-      selected !== 'custom'
-    ) {
-      setSelected(overview.tiers[0].id);
-    }
-  }, [overview, selected]);
-
-  const amount = selected === 'custom' ? Number(customAmount) : undefined;
-  const chosenTier: Tier | undefined = React.useMemo(() => {
-    if (selected === 'custom') {
-      return Number.isFinite(amount) && (amount as number) > 0
-        ? { id: 'custom', label: `$${amount}`, amountUsdc: amount as number }
-        : undefined;
-    }
-    return overview?.tiers.find(t => t.id === selected);
-  }, [selected, amount, overview?.tiers]);
-
-  // 1-Click Instant Treasury Top-Up
-  const handleTreasuryTopUp = useCallback(async () => {
+  /**
+   * One payment path with three signers.
+   *
+   * The quote, the envelope, the confirm call and the failure handling are the same whichever
+   * wallet signs, so they live here once. Only the signature itself is per wallet.
+   */
+  const payWithWallet = useCallback(async () => {
     if (!chosenTier) return;
     setError(null);
-    setReceipt(null);
-    setStage('confirming');
-
-    try {
-      const res = await creditsApi.treasuryTopUp(selected, amount, treasuryChain);
-      setReceipt({ credited: res.credited, explorerUrl: res.explorerUrl });
-      setStage('done');
-      onCredited();
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Treasury top-up failed'));
-      setStage('idle');
-    }
-  }, [chosenTier, selected, amount, treasuryChain, onCredited]);
-
-  // Algorand top-up payment
-  const buyAlgo = useCallback(async () => {
-    if (!activeAccount || !chosenTier) return;
-    setError(null);
-    setReceipt(null);
 
     try {
       setStage('quoting');
-      const quote = await creditsApi.quote(selected, amount);
-
-      setStage('signing');
-      const { ExactAvmScheme } = await import('@x402/avm/exact/client');
-      const scheme = new ExactAvmScheme({
-        address: activeAccount.address,
-        signTransactions: (txns: Uint8Array[], indexes?: number[]) =>
-          signTransactions(txns, indexes) as Promise<(Uint8Array | null)[]>,
-      });
-      const result = await scheme.createPaymentPayload(2, quote.requirements as never);
-      const paymentSignature = btoa(
-        JSON.stringify({
-          x402Version: 2,
-          scheme: 'exact',
-          network: quote.requirements.network,
-          payload: result.payload,
-        }),
-      );
-
-      setStage('confirming');
-      const confirmed = await creditsApi.confirm(selected, paymentSignature, amount);
-
-      setReceipt({ credited: confirmed.credited, explorerUrl: confirmed.explorerUrl });
-      setStage('done');
-      onCredited();
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Top-up failed'));
-      setStage('idle');
-    }
-  }, [activeAccount, chosenTier, selected, amount, signTransactions, onCredited]);
-
-  // EVM top-up payment
-  const buyEvm = useCallback(async () => {
-    if (!connectedEvmAccount || !chosenTier) return;
-    setError(null);
-    setReceipt(null);
-
-    try {
-      setStage('quoting');
-      const chainConfig = EVM_TESTNET_CHAINS[selectedEvmChain] || EVM_TESTNET_CHAINS.base;
-      await switchOrAddEvmChain(chainConfig);
-
-      const quote = await creditsApi.quote(selected, amount, chainConfig.key);
-
-      setStage('signing');
-      const paymentSignature = await signExactEvmPayment(quote.requirements, connectedEvmAccount);
-
-      setStage('confirming');
-      const confirmed = await creditsApi.confirm(selected, paymentSignature, amount);
-
-      setReceipt({ credited: confirmed.credited, explorerUrl: confirmed.explorerUrl });
-      setStage('done');
-      onCredited();
-    } catch (err) {
-      setError(apiErrorMessage(err, 'EVM Top-up failed'));
-      setStage('idle');
-    }
-  }, [connectedEvmAccount, chosenTier, selected, amount, selectedEvmChain, onCredited]);
-
-  // Solana top-up payment
-  const buySolana = useCallback(async () => {
-    if (!chosenTier) return;
-    setError(null);
-    setReceipt(null);
-
-    try {
-      setStage('quoting');
-      const quote = await creditsApi.quote(selected, amount, 'solana');
-
-      setStage('confirming');
-      const solana =
-        typeof window !== 'undefined'
-          ? (
-              window as unknown as {
-                solana?: { connect: () => Promise<{ publicKey: { toString: () => string } }> };
-              }
-            ).solana
-          : undefined;
       let paymentSignature: string;
-      if (connectedSolanaAccount && solana) {
-        paymentSignature = btoa(
-          JSON.stringify({
-            x402Version: 2,
-            scheme: 'exact',
-            network: quote.requirements.network,
-            payload: {
-              account: connectedSolanaAccount,
-              payer: connectedSolanaAccount,
-              signature: `solana_sig_${Date.now()}`,
-            },
-          }),
-        );
+      let walletExplorerUrl: string | undefined;
+
+      if (walletKind === 'algorand') {
+        if (!activeAccount) throw new Error('Connect an Algorand wallet first.');
+        const quote = await creditsApi.quote(selected);
+
+        setStage('signing');
+        const { ExactAvmScheme } = await import('@x402/avm/exact/client');
+        const scheme = new ExactAvmScheme({
+          address: activeAccount.address,
+          signTransactions: (txns: Uint8Array[], indexes?: number[]) =>
+            signTransactions(txns, indexes) as Promise<(Uint8Array | null)[]>,
+        });
+        const signed = await scheme.createPaymentPayload(2, quote.requirements as never);
+        paymentSignature = encodePayment(quote.requirements.network, signed.payload);
+      } else if (walletKind === 'evm') {
+        if (!evmAccount) throw new Error('Connect a wallet first.');
+        const chain = EVM_TESTNET_CHAINS[evmChain];
+        await switchOrAddEvmChain(chain);
+        const quote = await creditsApi.quote(selected, undefined, chain.key);
+
+        setStage('signing');
+        paymentSignature = await signExactEvmPayment(quote.requirements, evmAccount);
       } else {
-        paymentSignature = btoa(
-          JSON.stringify({
-            x402Version: 2,
-            scheme: 'exact',
-            network: quote.requirements.network,
-            payload: {
-              account: overview?.solanaWalletAddress,
-              signature: `solana_topup_${Date.now()}`,
-            },
-          }),
-        );
-      }
+        if (!freighterAccount) throw new Error('Connect Freighter first.');
+        const quote = await creditsApi.quote(selected, undefined, 'stellar');
 
-      const confirmed = await creditsApi.confirm(selected, paymentSignature, amount);
-      setReceipt({ credited: confirmed.credited, explorerUrl: confirmed.explorerUrl });
-      setStage('done');
-      onCredited();
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Solana Top-up failed'));
-      setStage('idle');
-    }
-  }, [connectedSolanaAccount, chosenTier, selected, amount, overview, onCredited]);
-
-  // Stellar top-up payment
-  const buyStellar = useCallback(async () => {
-    if (!chosenTier) return;
-    setError(null);
-    setReceipt(null);
-
-    try {
-      setStage('quoting');
-      const quote = await creditsApi.quote(selected, amount, 'stellar');
-
-      if (connectedFreighterAccount) {
         setStage('signing');
         const { payUsdcWithFreighter, getFreighterBalances } =
           await import('../wallet/freighterWallet');
-        const res = await payUsdcWithFreighter({
-          payerAddress: connectedFreighterAccount,
+        const paid = await payUsdcWithFreighter({
+          payerAddress: freighterAccount,
           recipientAddress: quote.requirements.payTo,
           amountUsdc: chosenTier.amountUsdc,
-          isMainnet: false,
+          isMainnet: !isTestnetProfile,
         });
-
-        setStage('confirming');
-        const paymentSignature = btoa(
-          JSON.stringify({
-            x402Version: 2,
-            scheme: 'exact',
-            network: quote.requirements.network,
-            payload: {
-              account: connectedFreighterAccount,
-              payer: connectedFreighterAccount,
-              transaction: res.signedTxXdr,
-              txHash: res.txHash,
-            },
-          }),
-        );
-
-        const confirmed = await creditsApi.confirm(selected, paymentSignature, amount);
-        setReceipt({
-          credited: confirmed.credited,
-          explorerUrl:
-            confirmed.explorerUrl || `https://stellar.expert/explorer/testnet/tx/${res.txHash}`,
+        paymentSignature = encodePayment(quote.requirements.network, {
+          account: freighterAccount,
+          payer: freighterAccount,
+          transaction: paid.signedTxXdr,
+          txHash: paid.txHash,
         });
-        setStage('done');
-        onCredited();
-        getFreighterBalances(connectedFreighterAccount)
+        walletExplorerUrl = `https://stellar.expert/explorer/testnet/tx/${paid.txHash}`;
+        getFreighterBalances(freighterAccount)
           .then(setFreighterBalances)
           .catch(() => null);
-      } else {
-        setStage('confirming');
-        const payer = overview?.stellarWalletAddress;
-        const paymentSignature = btoa(
-          JSON.stringify({
-            x402Version: 2,
-            scheme: 'exact',
-            network: quote.requirements.network,
-            payload: {
-              account: payer,
-              payer: payer,
-              signature: `stellar_topup_${Date.now()}`,
-            },
-          }),
-        );
-
-        const confirmed = await creditsApi.confirm(selected, paymentSignature, amount);
-        setReceipt({ credited: confirmed.credited, explorerUrl: confirmed.explorerUrl });
-        setStage('done');
-        onCredited();
       }
+
+      setStage('confirming');
+      const confirmed = await creditsApi.confirm(selected, paymentSignature);
+      finish(confirmed.credited, confirmed.explorerUrl || walletExplorerUrl);
     } catch (err) {
-      setError(apiErrorMessage(err, 'Stellar Top-up failed'));
+      setError(apiErrorMessage(err, 'The payment did not go through.'));
       setStage('idle');
     }
-  }, [connectedFreighterAccount, chosenTier, selected, amount, overview, onCredited]);
+  }, [
+    chosenTier,
+    walletKind,
+    selected,
+    activeAccount,
+    signTransactions,
+    evmAccount,
+    evmChain,
+    freighterAccount,
+    finish,
+  ]);
 
-  const busy = stage === 'quoting' || stage === 'signing' || stage === 'confirming';
-  const stageLabel = {
-    quoting: 'Preparing payment…',
-    signing: 'Approve in your wallet…',
-    confirming: 'Settling payment on chain…',
-  }[stage as 'quoting' | 'signing' | 'confirming'];
+  const walletConnected =
+    walletKind === 'algorand'
+      ? Boolean(activeAccount)
+      : walletKind === 'evm'
+        ? Boolean(evmAccount)
+        : Boolean(freighterAccount);
 
-  const panel = 'rounded-lg border border-border bg-panel p-5 mb-5';
+  const close = () => {
+    onClose();
+    // Reset on the way out, so reopening is a fresh top-up rather than the last receipt,
+    // and lands on the first tier rather than whatever was picked last time.
+    setStep('amount');
+    if (overview?.tiers.length) setSelected(overview.tiers[0].id);
+    setError(null);
+    setReceipt(null);
+    setStage('idle');
+  };
+
+  const title = receipt
+    ? 'Credit added'
+    : step === 'amount'
+      ? 'How much credit?'
+      : step === 'method'
+        ? 'How would you like to pay?'
+        : 'Pay from a wallet';
 
   return (
-    <div className={panel}>
-      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-        <h2 className="text-base m-0 text-main">Add credit</h2>
-        <span className="text-xs text-muted">{walletNetworkLabel}</span>
-      </div>
-      <p className="text-sm text-muted mb-4">
-        Fund your credit ledger via Algorand, Solana, Stellar, EVM testnet wallet, or Razorpay. Once
-        credited, all marketplace API calls are automated and walletless.
-      </p>
-
-      {/* Funding Method Tabs */}
-      <div className="flex items-center gap-1.5 mb-5 p-1 bg-bg rounded-lg border border-border flex-wrap">
-        <button
-          type="button"
-          onClick={() => setFundingMethod('treasury')}
-          className={`flex-1 min-w-[130px] py-1.5 px-3 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
-            fundingMethod === 'treasury'
-              ? 'bg-panel text-main shadow border border-border'
-              : 'text-muted hover:text-main'
-          }`}
-        >
-          <Gift size={13} className="text-accent" /> Instant Treasury
-        </button>
-        <button
-          type="button"
-          onClick={() => setFundingMethod('algorand')}
-          className={`flex-1 min-w-[120px] py-1.5 px-3 rounded-md text-xs font-medium cursor-pointer transition-colors ${
-            fundingMethod === 'algorand'
-              ? 'bg-panel text-main shadow border border-border'
-              : 'text-muted hover:text-main'
-          }`}
-        >
-          Algorand Wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setFundingMethod('solana')}
-          className={`flex-1 min-w-[120px] py-1.5 px-3 rounded-md text-xs font-medium cursor-pointer transition-colors ${
-            fundingMethod === 'solana'
-              ? 'bg-panel text-main shadow border border-border'
-              : 'text-muted hover:text-main'
-          }`}
-        >
-          Solana Wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setFundingMethod('stellar')}
-          className={`flex-1 min-w-[120px] py-1.5 px-3 rounded-md text-xs font-medium cursor-pointer transition-colors ${
-            fundingMethod === 'stellar'
-              ? 'bg-panel text-main shadow border border-border'
-              : 'text-muted hover:text-main'
-          }`}
-        >
-          Stellar Wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setFundingMethod('evm')}
-          className={`flex-1 min-w-[130px] py-1.5 px-3 rounded-md text-xs font-medium cursor-pointer transition-colors ${
-            fundingMethod === 'evm'
-              ? 'bg-panel text-main shadow border border-border'
-              : 'text-muted hover:text-main'
-          }`}
-        >
-          EVM Wallet
-        </button>
-        <button
-          type="button"
-          onClick={() => setFundingMethod('fiat')}
-          className={`flex-1 min-w-[130px] py-1.5 px-3 rounded-md text-xs font-medium cursor-pointer transition-colors ${
-            fundingMethod === 'fiat'
-              ? 'bg-panel text-main shadow border border-border'
-              : 'text-muted hover:text-main'
-          }`}
-        >
-          Card / UPI (Razorpay)
-        </button>
-      </div>
-
-      {fundingMethod === 'treasury' ? (
+    <Modal isOpen={isOpen} onClose={close} title={title}>
+      {receipt ? (
         <div className="flex flex-col gap-4">
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-main uppercase tracking-wider">
-                Instant Testnet Top-Up (1-Click)
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-md border border-border bg-bg px-4 py-3 text-sm"
+          >
+            <CheckCircle size={15} className="mt-0.5 shrink-0 text-main" />
+            <div>
+              <span className="text-main">
+                Added ${receipt.credited.toFixed(2)} to your balance.
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-panel border border-border text-muted font-mono">
-                No Wallet Required
-              </span>
-            </div>
-            <p className="text-xs text-muted mb-4">
-              Directly provisions on-chain testnet USDC to your custodial account from the platform
-              treasury.
-            </p>
-
-            <div className="mb-4">
-              <Select
-                label="Target Network"
-                value={treasuryChain}
-                onChange={e => setTreasuryChain(e.target.value)}
-              >
-                <option value="algorand">Algorand Testnet</option>
-                <option value="solana">Solana Devnet</option>
-                <option value="stellar">Stellar Testnet</option>
-                <option value="ethereum">Ethereum Sepolia (11155111)</option>
-                <option value="base">Base Sepolia (84532)</option>
-                <option value="arbitrum">Arbitrum Sepolia (421614)</option>
-                <option value="optimism">Optimism Sepolia (11155420)</option>
-                <option value="avalanche">Avalanche Fuji (43113)</option>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-              {(overview?.tiers || []).map(tier => (
-                <button
-                  key={tier.id}
-                  type="button"
-                  onClick={() => setSelected(tier.id)}
-                  className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                    selected === tier.id
-                      ? 'bg-main text-bg border-main font-semibold'
-                      : 'bg-panel text-main border-border hover:border-white/30'
-                  }`}
-                >
-                  <div className="text-lg">{tier.label}</div>
-                  <div className="text-[0.65rem] opacity-70">{tier.amountUsdc} USDC</div>
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setSelected('custom')}
-                className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                  selected === 'custom'
-                    ? 'bg-main text-bg border-main font-semibold'
-                    : 'bg-panel text-main border-border hover:border-white/30'
-                }`}
-              >
-                <div className="text-lg">Custom</div>
-                <div className="text-[0.65rem] opacity-70">
-                  {overview ? `${overview.custom.min}–${overview.custom.max}` : ''}
-                </div>
-              </button>
-            </div>
-
-            {selected === 'custom' && (
-              <input
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder={`Amount in USDC (${overview?.custom.min}–${overview?.custom.max})`}
-                className="w-full px-3 py-2.5 mb-4 rounded-md bg-panel border border-border text-main text-sm outline-none focus:border-main"
-              />
-            )}
-
-            <button
-              type="button"
-              onClick={handleTreasuryTopUp}
-              disabled={busy || !chosenTier}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {busy ? <Spinner size={15} /> : <Zap size={15} />}
-              {busy
-                ? stageLabel
-                : chosenTier
-                  ? `Fund ${chosenTier.amountUsdc} USDC from Treasury`
-                  : 'Choose an amount'}
-            </button>
-          </div>
-        </div>
-      ) : fundingMethod === 'evm' ? (
-        <div className="flex flex-col gap-4">
-          {/* EVM Custodial Address & Direct Razorpay Funding Card */}
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-main">
-                Your Dedicated EVM Custodial Address
-              </span>
-              <span className="text-[10px] text-muted uppercase tracking-wide">Testnet</span>
-            </div>
-
-            <div className="flex items-center gap-2 p-2.5 rounded bg-panel border border-border mb-3">
-              <span className="font-mono text-xs text-main break-all flex-1 select-all">
-                {overview?.evmWalletAddress || 'Generating EVM address…'}
-              </span>
-              <button
-                type="button"
-                onClick={copyEvmAddress}
-                className="p-1.5 rounded hover:bg-bg text-muted hover:text-main cursor-pointer border border-border shrink-0"
-                title="Copy EVM Address"
-              >
-                {copiedEvm ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-              </button>
-            </div>
-
-            <p className="text-xs text-muted mb-3 leading-relaxed">
-              Your custodial EVM account is provisioned across <strong>Base Sepolia</strong>,{' '}
-              <strong>Sepolia</strong>, <strong>Arbitrum Sepolia</strong>,{' '}
-              <strong>OP Sepolia</strong>, and <strong>Avalanche Fuji</strong>.
-            </p>
-
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-border flex-wrap">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowRazorpayModal(true)}
-              >
-                <Smartphone size={14} /> Fund via Razorpay (UPI / Card)
-              </Button>
-              {overview?.evmWalletAddress && (
+              {receipt.explorerUrl && (
                 <a
-                  href={overview.explorerUrls?.evm || '#'}
+                  href={receipt.explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-main"
+                  className="ml-2 inline-flex items-center gap-1 text-muted underline"
                 >
-                  View on BaseScan <ExternalLink size={11} />
+                  View the transaction <ExternalLink size={11} />
                 </a>
               )}
             </div>
           </div>
-
-          {/* Connect EVM Wallet & Pay on Testnet */}
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <h3 className="text-xs font-semibold text-main uppercase tracking-wider mb-3">
-              Pay with Connected EVM Wallet
-            </h3>
-
-            <div className="mb-4">
-              <Select
-                label="Select EVM Network"
-                value={selectedEvmChain}
-                onChange={e => setSelectedEvmChain(e.target.value)}
-              >
-                <option value="base">Base Sepolia (84532)</option>
-                <option value="ethereum">Ethereum Sepolia (11155111)</option>
-                <option value="arbitrum">Arbitrum Sepolia (421614)</option>
-                <option value="optimism">Optimism Sepolia (11155420)</option>
-                <option value="avalanche">Avalanche Fuji (43113)</option>
-                <option value="robinhood">Robinhood Testnet (46630)</option>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-              {(overview?.tiers || []).map(tier => (
-                <button
-                  key={tier.id}
-                  type="button"
-                  onClick={() => setSelected(tier.id)}
-                  className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                    selected === tier.id
-                      ? 'bg-main text-bg border-main font-semibold'
-                      : 'bg-panel text-main border-border hover:border-white/30'
-                  }`}
-                >
-                  <div className="text-lg">{tier.label}</div>
-                  <div className="text-[0.65rem] opacity-70">{tier.amountUsdc} USDC</div>
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setSelected('custom')}
-                className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                  selected === 'custom'
-                    ? 'bg-main text-bg border-main font-semibold'
-                    : 'bg-panel text-main border-border hover:border-white/30'
-                }`}
-              >
-                <div className="text-lg">Custom</div>
-                <div className="text-[0.65rem] opacity-70">
-                  {overview ? `${overview.custom.min}–${overview.custom.max}` : ''}
-                </div>
-              </button>
-            </div>
-
-            {selected === 'custom' && (
-              <input
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder={`Amount in USDC (${overview?.custom.min}–${overview?.custom.max})`}
-                className="w-full px-3 py-2.5 mb-4 rounded-md bg-panel border border-border text-main text-sm outline-none focus:border-main"
-              />
-            )}
-
-            {!connectedEvmAccount ? (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={handleConnectEvm}
-                isLoading={connectingEvm}
-                className="w-full"
-              >
-                <Wallet size={15} /> Connect EVM Wallet (MetaMask / Coinbase)
-              </Button>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between text-xs text-muted mb-3">
-                  <span className="font-mono">
-                    {connectedEvmAccount.slice(0, 8)}…{connectedEvmAccount.slice(-6)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleDisconnectEvm}
-                    className="bg-transparent border-0 cursor-pointer text-muted hover:text-main p-0 text-xs"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={buyEvm}
-                  disabled={busy || !chosenTier}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {busy ? <Spinner size={15} /> : <Zap size={15} />}
-                  {busy
-                    ? stageLabel
-                    : chosenTier
-                      ? `Pay ${chosenTier.amountUsdc} USDC on ${EVM_TESTNET_CHAINS[selectedEvmChain]?.name || 'EVM'}`
-                      : 'Choose an amount'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : fundingMethod === 'solana' ? (
-        <div className="flex flex-col gap-4">
-          {/* Solana Custodial Address & Details Card */}
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-main">
-                Your Dedicated Solana Custodial Address
-              </span>
-              <span className="text-[10px] text-muted uppercase tracking-wide">Devnet</span>
-            </div>
-
-            <div className="flex items-center gap-2 p-2.5 rounded bg-panel border border-border mb-3">
-              <span className="font-mono text-xs text-main break-all flex-1 select-all">
-                {overview?.solanaWalletAddress || 'Generating Solana address…'}
-              </span>
-              <button
-                type="button"
-                onClick={copySolanaAddress}
-                className="p-1.5 rounded hover:bg-bg text-muted hover:text-main cursor-pointer border border-border shrink-0"
-                title="Copy Solana Address"
-              >
-                {copiedSolana ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-              </button>
-            </div>
-
-            <p className="text-xs text-muted mb-3 leading-relaxed">
-              Your custodial Solana account receives SPL USDC on <strong>Solana Devnet</strong>.
-              Payments to APIs and top-ups settle gasless with zero SOL needed by the caller.
-            </p>
-
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-border flex-wrap">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowRazorpayModal(true)}
-              >
-                <Smartphone size={14} /> Fund via Razorpay (UPI / Card)
-              </Button>
-              {overview?.solanaWalletAddress && (
-                <a
-                  href={`https://explorer.solana.com/address/${overview.solanaWalletAddress}?cluster=devnet`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-main"
-                >
-                  View on Solana Explorer <ExternalLink size={11} />
-                </a>
-              )}
-            </div>
-          </div>
-
-          {/* Pay with Connected Solana Wallet or Devnet Top-Up */}
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <h3 className="text-xs font-semibold text-main uppercase tracking-wider mb-3">
-              Pay with Solana Wallet (Phantom / Solflare)
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-              {(overview?.tiers || []).map(tier => (
-                <button
-                  key={tier.id}
-                  type="button"
-                  onClick={() => setSelected(tier.id)}
-                  className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                    selected === tier.id
-                      ? 'bg-main text-bg border-main font-semibold'
-                      : 'bg-panel text-main border-border hover:border-white/30'
-                  }`}
-                >
-                  <div className="text-lg">{tier.label}</div>
-                  <div className="text-[0.65rem] opacity-70">{tier.amountUsdc} USDC</div>
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setSelected('custom')}
-                className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                  selected === 'custom'
-                    ? 'bg-main text-bg border-main font-semibold'
-                    : 'bg-panel text-main border-border hover:border-white/30'
-                }`}
-              >
-                <div className="text-lg">Custom</div>
-                <div className="text-[0.65rem] opacity-70">
-                  {overview ? `${overview.custom.min}–${overview.custom.max}` : ''}
-                </div>
-              </button>
-            </div>
-
-            {selected === 'custom' && (
-              <input
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder={`Amount in USDC (${overview?.custom.min}–${overview?.custom.max})`}
-                className="w-full px-3 py-2.5 mb-4 rounded-md bg-panel border border-border text-main text-sm outline-none focus:border-main"
-              />
-            )}
-
-            {!connectedSolanaAccount ? (
-              <div className="flex flex-col gap-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={handleConnectSolana}
-                  isLoading={connectingSolana}
-                  className="w-full"
-                >
-                  <Wallet size={15} /> Connect Solana Wallet (Phantom / Solflare)
-                </Button>
-                <button
-                  type="button"
-                  onClick={buySolana}
-                  disabled={busy || !chosenTier}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-panel hover:bg-panel-hover text-main border-border disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {busy ? <Spinner size={15} /> : <Zap size={15} />}
-                  {busy
-                    ? stageLabel
-                    : chosenTier
-                      ? `Direct Top-Up ${chosenTier.amountUsdc} USDC on Solana Devnet`
-                      : 'Choose an amount'}
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between text-xs text-muted mb-3">
-                  <span className="font-mono">
-                    {connectedSolanaAccount.slice(0, 8)}…{connectedSolanaAccount.slice(-6)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleDisconnectSolana}
-                    className="bg-transparent border-0 cursor-pointer text-muted hover:text-main p-0 text-xs"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={buySolana}
-                  disabled={busy || !chosenTier}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {busy ? <Spinner size={15} /> : <Zap size={15} />}
-                  {busy
-                    ? stageLabel
-                    : chosenTier
-                      ? `Pay ${chosenTier.amountUsdc} USDC on Solana Devnet`
-                      : 'Choose an amount'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : fundingMethod === 'stellar' ? (
-        <div className="flex flex-col gap-4">
-          {/* Stellar Custodial Address & Details Card */}
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-main">
-                Your Dedicated Stellar Custodial Address
-              </span>
-              <span className="text-[10px] text-muted uppercase tracking-wide">
-                Stellar Testnet / Soroban
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 p-2.5 rounded bg-panel border border-border mb-3">
-              <span className="font-mono text-xs text-main break-all flex-1 select-all">
-                {overview?.stellarWalletAddress || 'Generating Stellar address…'}
-              </span>
-              <button
-                type="button"
-                onClick={copyStellarAddress}
-                className="p-1.5 rounded hover:bg-bg text-muted hover:text-main cursor-pointer border border-border shrink-0"
-                title="Copy Stellar Address"
-              >
-                {copiedStellar ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-              </button>
-            </div>
-
-            <p className="text-xs text-muted mb-3 leading-relaxed">
-              Your custodial Stellar account receives Soroban USDC on{' '}
-              <strong>Stellar Testnet</strong>. Payments to APIs and top-ups settle gasless with
-              fees sponsored by the facilitator.
-            </p>
-
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-border flex-wrap">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowRazorpayModal(true)}
-              >
-                <Smartphone size={14} /> Fund via Razorpay (UPI / Card)
-              </Button>
-              {overview?.stellarWalletAddress && (
-                <a
-                  href={
-                    overview?.explorerUrls?.stellar ||
-                    `https://stellar.expert/explorer/testnet/account/${overview.stellarWalletAddress}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-main"
-                >
-                  View on Stellar.Expert <ExternalLink size={11} />
-                </a>
-              )}
-            </div>
-          </div>
-
-          {/* Connect Freighter Wallet & Pay on Testnet */}
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <h3 className="text-xs font-semibold text-main uppercase tracking-wider mb-3">
-              Pay with Connected Freighter Wallet
-            </h3>
-
-            <div className="p-3 mb-4 rounded-md bg-panel border border-border flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Wallet size={16} className="text-muted" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-medium text-main">Freighter Extension</span>
-                  {connectedFreighterAccount ? (
-                    <span className="font-mono text-[11px] text-muted">
-                      {connectedFreighterAccount.slice(0, 8)}…{connectedFreighterAccount.slice(-8)}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-muted">
-                      Connect your Freighter browser wallet
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {connectedFreighterAccount ? (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-muted font-mono">
-                    USDC: <strong className="text-main">{freighterBalances?.usdc || '0'}</strong> •
-                    XLM: <strong className="text-main">{freighterBalances?.xlm || '0'}</strong>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-success bg-success/10 border border-success/30 px-2 py-0.5 rounded">
-                    <span className="w-1.5 h-1.5 rounded-full bg-success inline-block animate-pulse" />
-                    Connected
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleDisconnectFreighter}
-                    className="text-xs text-muted hover:text-danger cursor-pointer ml-1"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleConnectFreighter}
-                  isLoading={connectingFreighter}
-                >
-                  <Zap size={14} /> Connect Freighter
-                </Button>
-              )}
-            </div>
-
-            {connectedFreighterAccount &&
-              freighterBalances &&
-              !freighterBalances.hasUsdcTrustline && (
-                <div className="p-3 mb-4 rounded-md bg-warning/10 border border-warning/30 text-xs text-warning leading-relaxed flex items-start gap-2">
-                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                  <div>
-                    <strong>No USDC Trustline:</strong> Your connected Freighter wallet has no USDC
-                    trustline on testnet. Please add the USDC asset in your Freighter extension
-                    (Issuer:{' '}
-                    <code className="font-mono text-[11px]">
-                      GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
-                    </code>
-                    ).
-                  </div>
-                </div>
-              )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-              {(overview?.tiers || []).map(tier => (
-                <button
-                  key={tier.id}
-                  type="button"
-                  onClick={() => setSelected(tier.id)}
-                  className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                    selected === tier.id
-                      ? 'bg-main text-bg border-main font-semibold'
-                      : 'bg-panel text-main border-border hover:border-white/30'
-                  }`}
-                >
-                  <div className="text-lg">{tier.label}</div>
-                  <div className="text-[0.65rem] opacity-70">{tier.amountUsdc} USDC</div>
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setSelected('custom')}
-                className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                  selected === 'custom'
-                    ? 'bg-main text-bg border-main font-semibold'
-                    : 'bg-panel text-main border-border hover:border-white/30'
-                }`}
-              >
-                <div className="text-lg">Custom</div>
-                <div className="text-[0.65rem] opacity-70">
-                  {overview ? `${overview.custom.min}–${overview.custom.max}` : ''}
-                </div>
-              </button>
-            </div>
-
-            {selected === 'custom' && (
-              <input
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder={`Amount in USDC (${overview?.custom.min}–${overview?.custom.max})`}
-                className="w-full px-3 py-2.5 mb-4 rounded-md bg-panel border border-border text-main text-sm outline-none focus:border-main"
-              />
-            )}
-
-            <button
-              type="button"
-              onClick={buyStellar}
-              disabled={busy || !chosenTier}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {busy ? <Spinner size={15} /> : <Zap size={15} />}
-              {busy
-                ? stageLabel
-                : chosenTier
-                  ? connectedFreighterAccount
-                    ? `Pay ${chosenTier.amountUsdc} USDC with Freighter`
-                    : `Direct Top-Up ${chosenTier.amountUsdc} USDC on Stellar Testnet`
-                  : 'Choose an amount'}
-            </button>
-          </div>
-        </div>
-      ) : fundingMethod === 'fiat' ? (
-        <div className="p-5 rounded-lg bg-bg border border-border text-center mb-4">
-          <Smartphone size={28} className="mx-auto mb-2 text-muted" />
-          <h3 className="text-sm font-medium text-main mb-1">Instant Fiat & UPI Top-Up</h3>
-          <p className="text-xs text-muted max-w-sm mx-auto mb-4">
-            Top up your spendable USDC credit using any credit card, debit card, netbanking, or UPI
-            via Razorpay. Automatically provisions and funds both your EVM and Algorand custodial
-            wallets.
-          </p>
-          <Button type="button" variant="primary" onClick={() => setShowRazorpayModal(true)}>
-            Launch Razorpay Checkout
+          <Button type="button" onClick={close} className="w-full">
+            Done
           </Button>
         </div>
       ) : (
-        <>
-          <div className="p-4 rounded-lg bg-bg border border-border">
-            <h3 className="text-xs font-semibold text-main uppercase tracking-wider mb-3">
-              Pay with External Algorand Wallet
-            </h3>
+        <div className="flex flex-col gap-4">
+          {step !== 'amount' && (
+            <button
+              type="button"
+              onClick={() => setStep(step === 'crypto' ? 'method' : 'amount')}
+              className="inline-flex w-fit cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-xs text-muted hover:text-main"
+            >
+              <ArrowLeft size={13} />
+              {step === 'crypto' ? 'Payment method' : 'Change amount'}
+            </button>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-              {(overview?.tiers || []).map(tier => (
-                <button
-                  key={tier.id}
-                  type="button"
-                  onClick={() => setSelected(tier.id)}
-                  className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                    selected === tier.id
-                      ? 'bg-main text-bg border-main font-semibold'
-                      : 'bg-panel text-main border-border hover:border-white/30'
-                  }`}
-                >
-                  <div className="text-lg">{tier.label}</div>
-                  <div className="text-[0.65rem] opacity-70">{tier.amountUsdc} USDC</div>
-                </button>
-              ))}
-              <button
+          {step === 'amount' && (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {(overview?.tiers || []).map(tier => (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    aria-pressed={selected === tier.id}
+                    onClick={() => setSelected(tier.id)}
+                    className={`cursor-pointer rounded-md border px-3 py-4 text-center text-lg ${
+                      selected === tier.id
+                        ? 'border-main bg-main font-semibold text-bg'
+                        : 'border-border bg-bg text-main hover:border-white/30'
+                    }`}
+                  >
+                    {tier.label}
+                  </button>
+                ))}
+              </div>
+
+              <Button
                 type="button"
-                onClick={() => setSelected('custom')}
-                className={`px-3 py-3 rounded-md border text-center cursor-pointer ${
-                  selected === 'custom'
-                    ? 'bg-main text-bg border-main font-semibold'
-                    : 'bg-panel text-main border-border hover:border-white/30'
-                }`}
+                onClick={() => setStep('method')}
+                disabled={!chosenTier}
+                className="w-full"
               >
-                <div className="text-lg">Custom</div>
-                <div className="text-[0.65rem] opacity-70">
-                  {overview ? `${overview.custom.min}–${overview.custom.max}` : ''}
-                </div>
-              </button>
-            </div>
+                {chosenTier ? `Continue with ${chosenTier.label}` : 'Choose an amount'}
+              </Button>
+            </>
+          )}
 
-            {selected === 'custom' && (
-              <input
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder={`Amount in USDC (${overview?.custom.min}–${overview?.custom.max})`}
-                className="w-full px-3 py-2.5 mb-4 rounded-md bg-panel border border-border text-main text-sm outline-none focus:border-main"
+          {step === 'method' && chosenTier && (
+            <>
+              <div className="flex items-center justify-between rounded-md border border-border bg-bg px-3.5 py-2.5">
+                <span className="text-sm text-muted">Adding</span>
+                <span className="font-mono text-lg font-semibold text-main">
+                  {chosenTier.label}
+                </span>
+              </div>
+              <Choice
+                icon={<CreditCard size={18} />}
+                title="Card or UPI"
+                hint="Through Razorpay. You are charged in rupees, and Razorpay shows the amount before you confirm."
+                onClick={payByCard}
+                disabled={busy}
+                marks={<BrandLogo src={LOGO('razorpay')} size={18} />}
               />
-            )}
-
-            {!activeAccount ? (
-              <div>
-                <p className="text-xs text-muted mb-3">
-                  Connect your browser or mobile Algorand wallet to approve and sign the top-up:
+              <Choice
+                icon={<Wallet size={18} />}
+                title="Crypto wallet"
+                hint="A wallet you already hold, on Algorand, Ethereum and its L2s, or Stellar. Scan a code to use one on your phone."
+                onClick={() => setStep('crypto')}
+                disabled={busy}
+                marks={
+                  <>
+                    {/* Real artwork, shipped by the adapters themselves. The network marks
+                        beside them appear as soon as their files exist. */}
+                    {wallets.slice(0, 2).map(w => (
+                      <Image
+                        key={w.id}
+                        src={w.metadata.icon}
+                        alt=""
+                        aria-hidden="true"
+                        width={18}
+                        height={18}
+                        unoptimized
+                        className="h-[18px] w-[18px] rounded-sm object-contain"
+                      />
+                    ))}
+                    {NETWORKS.map(net => (
+                      <BrandLogo key={net.key} src={net.logo} size={18} />
+                    ))}
+                  </>
+                }
+              />
+              {isTestnetProfile && (
+                <Choice
+                  icon={<Gift size={18} />}
+                  title="Test credit"
+                  hint="Nobody is charged. It is funded by us and it works only on the test network."
+                  onClick={addTestCredit}
+                  disabled={busy}
+                />
+              )}
+              {busy && (
+                <p className="m-0 text-center text-xs text-muted" role="status">
+                  {stageLabel}
                 </p>
-                <div className="flex gap-2 flex-wrap mb-2">
-                  {wallets.map(w => (
+              )}
+            </>
+          )}
+
+          {step === 'crypto' && chosenTier && (
+            <>
+              <div>
+                <span className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted">
+                  Network
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {NETWORKS.map(net => (
                     <button
-                      key={w.id}
+                      key={net.key}
                       type="button"
-                      onClick={() => {
-                        w.connect().catch((err: unknown) => {
-                          console.warn('Algorand wallet connect dismissed or failed:', err);
-                        });
-                      }}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main"
+                      aria-pressed={walletKind === net.key}
+                      onClick={() => setWalletKind(net.key)}
+                      className={`flex cursor-pointer flex-col items-center gap-2 whitespace-normal rounded-md border px-2 py-3 text-center text-xs ${
+                        walletKind === net.key
+                          ? 'border-main bg-panel-hover text-main'
+                          : 'border-border bg-bg text-muted hover:border-white/30 hover:text-main'
+                      }`}
                     >
-                      <Wallet size={15} /> Connect {w.metadata.name}
+                      <BrandLogo src={net.logo} />
+                      {net.name}
                     </button>
                   ))}
                 </div>
               </div>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between text-xs text-muted mb-3">
-                  <span className="font-mono">
-                    {activeAccount.address.slice(0, 10)}…{activeAccount.address.slice(-6)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
+
+              {walletKind === 'evm' && (
+                <Select label="Chain" value={evmChain} onChange={e => setEvmChain(e.target.value)}>
+                  {Object.values(EVM_TESTNET_CHAINS).map(chain => (
+                    <option key={chain.key} value={chain.key}>
+                      {chain.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+
+              {walletKind === 'algorand' &&
+                (activeAccount ? (
+                  <ConnectedRow
+                    address={activeAccount.address}
+                    onDisconnect={() =>
                       wallets
                         .find(w => w.isActive)
                         ?.disconnect()
-                        .catch(() => {});
+                        .catch(() => null)
+                    }
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {wallets.map(w => (
+                      <Button
+                        key={w.id}
+                        type="button"
+                        variant="secondary"
+                        onClick={() =>
+                          w.connect().catch((err: unknown) => {
+                            console.warn('Algorand wallet connect dismissed or failed:', err);
+                          })
+                        }
+                      >
+                        {/* The adapters ship their own mark, so this is the real Pera and
+                            WalletConnect artwork rather than a generic glyph. */}
+                        <Image
+                          src={w.metadata.icon}
+                          alt=""
+                          aria-hidden="true"
+                          width={16}
+                          height={16}
+                          unoptimized
+                          className="mr-2 h-4 w-4 rounded-sm object-contain"
+                        />
+                        {w.metadata.name}
+                      </Button>
+                    ))}
+                  </div>
+                ))}
+
+              {walletKind === 'evm' &&
+                (evmAccount ? (
+                  <ConnectedRow
+                    address={evmAccount}
+                    onDisconnect={() => {
+                      setEvmAccount(null);
+                      void disconnectEvmWallet();
                     }}
-                    className="bg-transparent border-0 cursor-pointer text-muted hover:text-main p-0 text-xs"
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => connectEvm('injected')}
+                      isLoading={connectingEvm === 'injected'}
+                    >
+                      <Wallet size={15} className="mr-2" /> Browser wallet
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => connectEvm('walletconnect')}
+                      isLoading={connectingEvm === 'walletconnect'}
+                      disabled={!hasWalletConnect}
+                      title={
+                        hasWalletConnect
+                          ? 'Scan a code with a wallet on your phone'
+                          : 'WalletConnect is not configured for this deployment'
+                      }
+                    >
+                      <QrCode size={15} className="mr-2" /> WalletConnect
+                    </Button>
+                  </div>
+                ))}
+
+              {walletKind === 'stellar' &&
+                (freighterAccount ? (
+                  <ConnectedRow
+                    address={freighterAccount}
+                    onDisconnect={() => {
+                      setFreighterAccount(null);
+                      setFreighterBalances(null);
+                    }}
+                  />
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={connectFreighter}
+                    isLoading={connectingFreighter}
                   >
-                    Disconnect
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={buyAlgo}
-                  disabled={busy || !chosenTier}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {busy ? <Spinner size={15} /> : <Zap size={15} />}
-                  {busy
-                    ? stageLabel
-                    : chosenTier
-                      ? `Pay ${chosenTier.amountUsdc} USDC on Algorand`
-                      : 'Choose an amount'}
-                </button>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+                    <Wallet size={15} className="mr-2" /> Connect Freighter
+                  </Button>
+                ))}
 
-      {overview?.walletAddress && (
-        <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-muted m-0">No crypto wallet? Pay with card or UPI.</p>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => setShowRazorpayModal(true)}
-          >
-            <Smartphone size={14} /> Pay with Razorpay
-          </Button>
-        </div>
-      )}
+              {walletKind === 'stellar' &&
+                freighterBalances &&
+                !freighterBalances.hasUsdcTrustline && (
+                  <p className="m-0 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    This Freighter account holds no USDC trustline, so it cannot send the payment.
+                    Add the USDC asset in Freighter first.
+                  </p>
+                )}
 
-      {receipt && (
-        <div className="mt-4 px-4 py-3 rounded-md border border-border bg-bg flex items-start gap-2 text-sm">
-          <CheckCircle size={15} className="mt-0.5 shrink-0 text-main" />
-          <div>
-            <span className="text-main">Added {receipt.credited} USDC of credit.</span>
-            <a
-              href={receipt.explorerUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 ml-2 underline text-muted"
+              <Button
+                type="button"
+                onClick={payWithWallet}
+                disabled={!walletConnected}
+                isLoading={busy}
+                className="w-full"
+              >
+                {busy
+                  ? stageLabel
+                  : walletConnected
+                    ? `Pay ${chosenTier.label}`
+                    : 'Connect a wallet to pay'}
+              </Button>
+            </>
+          )}
+
+          {error && (
+            <p
+              role="alert"
+              className="m-0 flex items-start gap-2 rounded-md border border-error/40 bg-error/10 px-3 py-2 text-xs text-error"
             >
-              View on Explorer <ExternalLink size={11} />
-            </a>
-          </div>
+              <AlertCircle size={14} className="mt-0.5 shrink-0" /> {error}
+            </p>
+          )}
         </div>
       )}
+    </Modal>
+  );
+};
 
-      {error && (
-        <p className="mt-4 text-xs text-error border border-error/40 bg-error/10 rounded-md px-3 py-2 m-0 flex items-start gap-2">
-          <AlertCircle size={14} className="mt-0.5 shrink-0" /> {error}
+/** The card on `/profile` that opens the flow. Everything else happens in the modal. */
+const TopUpPanel: React.FC<Props> = ({ overview, onCredited }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-panel p-5">
+      <div className="min-w-0">
+        <h2 className="m-0 text-base text-main">Add credit</h2>
+        <p className="m-0 mt-1 text-sm text-muted">
+          Credit you add here is what your API calls spend.
         </p>
-      )}
+      </div>
+      <Button type="button" onClick={() => setOpen(true)}>
+        Add credit
+      </Button>
 
-      <RazorpayTopUpModal
-        isOpen={showRazorpayModal}
-        onClose={() => setShowRazorpayModal(false)}
-        walletAddress={overview?.walletAddress}
-        evmWalletAddress={overview?.evmWalletAddress}
-        defaultAmount={chosenTier?.amountUsdc || 5}
-        onSuccess={onCredited}
+      <AddCreditModal
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        overview={overview}
+        onCredited={onCredited}
       />
     </div>
   );

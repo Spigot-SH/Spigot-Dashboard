@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi, SessionState, AuthUser, PublisherInfo, WalletInfo, Balances } from '../api/auth';
+import { clearAuth } from '../api/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -63,6 +64,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = useCallback(async () => {
     await authApi.logout().catch(() => undefined);
+    // The publisher API key outlives the session in localStorage, and it authenticates as the
+    // publisher on its own. Leaving it behind hands the next person on this browser a working
+    // credential, so it goes even if the logout request failed.
+    clearAuth();
     setState({ user: null, credits: 0, wallet: null, evmWallet: null, balances: null });
   }, []);
 

@@ -20,7 +20,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseClasses =
-    'inline-flex items-center justify-center gap-2 rounded-md font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed';
 
   const sizeMap = {
     sm: 'px-3 py-1.5 text-xs',
@@ -66,7 +66,11 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
     >
       {isLoading && <Spinner size={16} />}
-      <span>{children}</span>
+      {/* A flex row, not a plain span. Lucide renders its svg as `display: block`, which takes
+          a line of its own inside an inline span and splits "icon + label" over two lines.
+          `whitespace-nowrap` cannot prevent that; only taking the icon out of inline flow can.
+          Spacing stays with the call site, which sets its own margin on the icon. */}
+      <span className="inline-flex items-center">{children}</span>
     </button>
   );
 };

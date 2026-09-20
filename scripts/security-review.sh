@@ -104,6 +104,17 @@ else
   record "S1.3-bundle-secrets" UNVERIFIED ".next/static absent — run 'npm run build' first"
 fi
 
+# The local sign-in shortcut in src/auth/SignInPanel.tsx is fenced by `process.env.NODE_ENV`,
+# which the bundler inlines, so a production build should eliminate the whole branch. That is
+# an assumption about the bundler, and assumptions are what this file exists to check. If the
+# marker ever reaches .next/static, a way past the sign-in screen shipped.
+if [ -d .next/static ]; then
+  expect_empty "S1.5-dev-bypass" "no local sign-in shortcut in the client bundle" \
+    bash -c "set -o pipefail; grep -rl 'spigot-dev-sign-in' .next/static 2>/dev/null"
+else
+  record "S1.5-dev-bypass" UNVERIFIED ".next/static absent — run 'npm run build' first"
+fi
+
 expect_empty "S1.4-public-env" "no server secret is exposed via NEXT_PUBLIC_" \
   bash -c "set -o pipefail; grep -rn 'NEXT_PUBLIC_[A-Z_]*\(SECRET\|MNEMONIC\|PRIVATE\|TOKEN\|PASSWORD\)' src next.config.ts 2>/dev/null"
 

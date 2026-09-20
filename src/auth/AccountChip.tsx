@@ -2,15 +2,22 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { LogOut, User } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { formatCredit } from '../lib/format';
 import { Spinner } from '../components/common/Spinner';
 
+/**
+ * Who is signed in, what they have, and the way out.
+ *
+ * Deliberately not a navigation menu. It used to carry an "Account & credit" item that went to
+ * `/profile`, which the caller sidebar already links and the overview's own button already
+ * reaches, so one screen offered the same destination three times. Identity and sign-out are
+ * the two things only this control can do.
+ */
 const AccountChip: React.FC = () => {
   const { user, credits, loading, signedIn, openSignIn, signOut } = useAuth();
   const [open, setOpen] = useState(false);
-  const router = useRouter();
 
   if (loading) {
     return <Spinner size={16} className="text-muted" />;
@@ -49,7 +56,7 @@ const AccountChip: React.FC = () => {
         )}
         <span className="text-sm text-main max-w-[140px] truncate">{user?.email}</span>
         <span className="text-xs font-mono text-muted border-l border-border pl-2">
-          {credits.toFixed(2)} USDC
+          {formatCredit(credits)}
         </span>
       </button>
 
@@ -63,20 +70,10 @@ const AccountChip: React.FC = () => {
             <div className="text-xs border-t border-border pt-3 mb-3">
               <div className="flex justify-between">
                 <span className="text-muted">Credit</span>
-                <span className="font-mono text-main">{credits.toFixed(6)} USDC</span>
+                <span className="font-mono text-main">{formatCredit(credits)}</span>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                router.push('/profile');
-              }}
-              className="w-full text-left text-sm text-main bg-transparent border-0 cursor-pointer px-0 py-1.5 hover:opacity-70"
-            >
-              Account & credit
-            </button>
             <button
               type="button"
               onClick={async () => {

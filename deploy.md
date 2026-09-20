@@ -28,10 +28,18 @@ users visit.
 | `NEXT_PUBLIC_ALGORAND_NETWORK_PROFILE` | `testnet`                                   | browser          |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID`         | same as backend `GOOGLE_CLIENT_ID`, if used | browser          |
 | `NEXT_PUBLIC_GATEWAY_URL`              | backend public URL, `https://…`             | browser          |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | from dashboard.reown.com, or blank          | browser          |
+| `NEXT_PUBLIC_APP_URL`                  | canonical app URL, or blank                 | browser          |
 
 - `BACKEND_ORIGIN` uses the **private network**: service name `backend` + the port the backend
   pins (`PORT=4402`). Both services must be in one Railway project. The backend's public
   `https://` domain also works; it is just a slower round trip.
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` turns on WalletConnect, which is how a wallet on a
+  phone connects. Blank hides every WalletConnect option: the Algorand wallet list drops it and
+  the EVM button renders disabled with a title saying why. It is a public identifier, not a
+  secret, and it is inlined at build time, so changing it needs a rebuild.
+- `NEXT_PUBLIC_APP_URL` is the name and icon a wallet shows when it asks the user to approve a
+  connection. Leave it blank and the app falls back to the current origin.
 - `NEXT_PUBLIC_GATEWAY_URL` is the gateway origin shown to publishers in the onboarding
   preview. Unset, it shows the Dashboard's own origin — which also works, because `/x402` is
   rewritten to the backend, but the backend domain is the honest answer.

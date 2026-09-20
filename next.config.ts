@@ -5,13 +5,17 @@ import type { NextConfig } from 'next';
  *
  * They are optional peer dependencies, so they are not installed. Turbopack resolves the full
  * import graph and fails on them, where Vite simply skipped them. Pointing each at an empty
- * module keeps them out of the bundle instead of pulling in WalletConnect and friends.
+ * module keeps them out of the bundle.
+ *
+ * `@walletconnect/modal` and `@walletconnect/sign-client` were on this list and are not any
+ * more: the app registers WalletConnect now, so they are real dependencies and stubbing them
+ * breaks the build with "Export SignClient doesn't exist in target module". An entry here
+ * that is also a registered wallet resolves to an empty object and fails loudly, which is the
+ * behaviour `src/wallet/unused-adapter-stub.ts` warns about.
  */
 const UNUSED_WALLET_ADAPTERS = [
   '@agoralabs-sh/avm-web-provider',
   '@blockshake/defly-connect',
-  '@walletconnect/modal',
-  '@walletconnect/sign-client',
   'lute-connect',
 ];
 

@@ -60,9 +60,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
               <TrendingUp size={16} />
             </span>
           </div>
-          <div className="text-2xl font-semibold text-main">
-            {totalRev.toFixed(4)} <span className="text-sm font-normal text-muted">USDC</span>
-          </div>
+          <div className="text-2xl font-semibold text-main">${totalRev.toFixed(4)}</div>
           <div className="text-xs text-muted mt-2">Sum of endpoint revenue, all requests</div>
         </Card>
 
@@ -166,7 +164,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
                         {calls.toLocaleString()}
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-accent font-medium">
-                        {rev.toFixed(4)} USDC
+                        ${rev.toFixed(4)}
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-muted">
                         {Math.round(lat)}ms
