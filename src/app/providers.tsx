@@ -6,6 +6,7 @@ import { AuthProvider } from '../auth/AuthContext';
 import SignInModal from '../auth/SignInModal';
 import Header from '../components/layout/Header';
 import { ToastProvider } from '../components/common/Toast';
+import { WelcomeGate } from '../views/Welcome';
 
 /**
  * The old App.tsx, minus routing.
@@ -25,6 +26,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <Header />
             <main className="flex-1 flex flex-col pt-20 px-6 pb-8">{children}</main>
             <SignInModal />
+            <WelcomeGate />
           </div>
         </ToastProvider>
       </AuthProvider>

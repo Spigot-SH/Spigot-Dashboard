@@ -7,6 +7,7 @@ import { Button } from '../components/common/Button';
 import { Search, Clock, ShieldCheck } from 'lucide-react';
 import { MarketplaceApi } from '../api/client';
 import { normaliseApi } from '../api/marketplace';
+import { UNKNOWN } from '../lib/format';
 
 interface MarketplaceProps {
   /** Fetched server-side in app/page.tsx so the listing is in the HTML for crawlers. */
@@ -147,13 +148,17 @@ const Marketplace: React.FC<MarketplaceProps> = ({ initialApis }) => {
                   <div className="flex items-center gap-1 text-xs text-muted mb-1">
                     <Clock size={12} /> Latency
                   </div>
-                  <div className="font-mono text-sm">{api.avgLatency}ms</div>
+                  <div className="font-mono text-sm">
+                    {api.avgLatency === null ? UNKNOWN : `${Math.round(api.avgLatency)}ms`}
+                  </div>
                 </div>
                 <div className="bg-bg p-2 rounded flex flex-col items-center justify-center border border-border">
                   <div className="flex items-center gap-1 text-xs text-muted mb-1">
                     <ShieldCheck size={12} /> Uptime
                   </div>
-                  <div className="font-mono text-sm text-accent">{api.uptime}%</div>
+                  <div className="font-mono text-sm text-accent">
+                    {api.uptime === null ? UNKNOWN : `${api.uptime.toFixed(1)}%`}
+                  </div>
                 </div>
               </div>
 

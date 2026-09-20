@@ -3,22 +3,25 @@
 import React from 'react';
 import { Card } from '../common/Card';
 import { DashboardStats, DashboardEndpointRow } from '../../api/client';
-import { Activity, TrendingUp, CheckCircle2, ArrowUpRight, Clock } from 'lucide-react';
+import { Activity, TrendingUp, CheckCircle2, Clock } from 'lucide-react';
+import { UNKNOWN } from '../../lib/format';
 
 interface AnalyticsViewProps {
   stats: DashboardStats;
 }
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
-  const totalReqs = stats.totalRequests || 0;
+  const totalReqs = stats.requestsMonth;
   const totalRev = (stats.endpoints || []).reduce(
     (acc, ep) => acc + Number(ep.total_revenue || ep.revenue || 0),
     0,
   );
   const avgLatency = stats.health?.avgLatency || 0;
+  // null until an endpoint has traffic. The rate and the latency cover every request ever made.
+  const hasTraffic = stats.successRate !== null;
   const successRate = stats.successRate ?? 0;
   // No requests yet means there is no rate to report; show a dash, never a default.
-  const successLabel = totalReqs > 0 ? `${successRate}%` : '—';
+  const successLabel = hasTraffic ? `${successRate}%` : UNKNOWN;
 
   return (
     <div className="flex flex-col gap-8">
@@ -38,17 +41,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
         <Card hoverable className="relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs uppercase tracking-wider text-muted font-normal">
-              Requests
+              Requests this month
             </span>
             <span className="p-1.5 rounded-md bg-accent/10 text-accent">
               <Activity size={16} />
             </span>
           </div>
           <div className="text-2xl font-semibold text-main">{totalReqs.toLocaleString()}</div>
-          <div className="text-xs text-muted mt-2 flex items-center gap-1">
-            <ArrowUpRight size={14} className="text-accent" />
-            <span className="text-main font-medium">100%</span> delivered via x402
-          </div>
+          <div className="text-xs text-muted mt-2">Since the first of this month</div>
         </Card>
 
         <Card hoverable className="relative overflow-hidden">
@@ -63,7 +63,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
           <div className="text-2xl font-semibold text-main">
             {totalRev.toFixed(4)} <span className="text-sm font-normal text-muted">USDC</span>
           </div>
-          <div className="text-xs text-muted mt-2">Instant settlement enabled</div>
+          <div className="text-xs text-muted mt-2">Sum of endpoint revenue, all requests</div>
         </Card>
 
         <Card hoverable className="relative overflow-hidden">
@@ -76,9 +76,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
             </span>
           </div>
           <div className="text-2xl font-semibold font-mono text-main">
-            {avgLatency} <span className="text-sm font-normal text-muted">ms</span>
+            {hasTraffic ? avgLatency : UNKNOWN}
+            {hasTraffic && <span className="text-sm font-normal text-muted"> ms</span>}
           </div>
-          <div className="text-xs text-muted mt-2">End-to-end edge proxy</div>
+          <div className="text-xs text-muted mt-2">Average over all requests</div>
         </Card>
 
         <Card hoverable className="relative overflow-hidden">
@@ -91,7 +92,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
             </span>
           </div>
           <div className="text-2xl font-semibold text-success">{successLabel}</div>
-          <div className="text-xs text-muted mt-2">HTTP 2xx response ratio</div>
+          <div className="text-xs text-muted mt-2">Responses below HTTP 400, all requests</div>
         </Card>
       </div>
 
@@ -102,14 +103,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
             <div className="flex justify-between text-xs mb-1.5">
               <span className="text-main font-medium flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-success inline-block"></span>
-                2xx Success
+                Success (below HTTP 400)
               </span>
               <span className="font-mono text-success font-medium">{successLabel}</span>
             </div>
             <div className="w-full h-2 rounded-full bg-panel overflow-hidden border border-border">
               <div
                 className="h-full bg-success"
-                style={{ width: `${totalReqs > 0 ? successRate : 0}%` }}
+                style={{ width: `${hasTraffic ? successRate : 0}%` }}
               />
             </div>
           </div>
@@ -121,13 +122,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ stats }) => {
                 Errors (4xx and 5xx)
               </span>
               <span className="font-mono text-warning font-medium">
-                {totalReqs > 0 ? (100 - successRate).toFixed(1) : 0}%
+                {hasTraffic ? `${(100 - successRate).toFixed(1)}%` : UNKNOWN}
               </span>
             </div>
             <div className="w-full h-2 rounded-full bg-panel overflow-hidden border border-border">
               <div
                 className="h-full bg-warning"
-                style={{ width: `${totalReqs > 0 ? Math.min(100 - successRate, 100) : 0}%` }}
+                style={{ width: `${hasTraffic ? Math.min(100 - successRate, 100) : 0}%` }}
               />
             </div>
           </div>

@@ -94,7 +94,7 @@ const Header: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => router.push('/onboarding')}
+            onClick={() => router.push('/start')}
             className="text-main hover:text-white text-sm font-medium bg-panel px-3 py-1.5 rounded-md border border-border hover:border-white/20 cursor-pointer"
           >
             Publish API

@@ -5,9 +5,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '../components/layout/Sidebar';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { EmptyState } from '../components/common/EmptyState';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Table, Th, Td, TdEmpty } from '../components/common/Table';
 import { UNKNOWN, truncateMiddle } from '../lib/format';
+import { errorMessage } from '../lib/errors';
 import { Activity, CreditCard, Network, CheckCircle, Clock, Plus } from 'lucide-react';
 import {
   apiClient,
@@ -33,14 +35,14 @@ interface DashboardProps {
 const EMPTY_STATS: DashboardStats = {
   availableBalance: 0,
   pendingBalance: 0,
-  totalRequests: 0,
-  successRate: 100,
+  requestsToday: 0,
+  requestsMonth: 0,
+  successRate: null,
   endpoints: [],
   transactions: [],
   health: {
-    uptime: 100,
     avgLatency: 0,
-    status: 'ONLINE',
+    status: null,
   },
   settlements: [],
 };
@@ -59,10 +61,12 @@ function settlementStatus(status: unknown): 'PUBLISHED' | 'PENDING' | 'OFFLINE' 
 const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, refresh, signedIn, openSignIn } = useAuth();
+  const { user, publisher, refresh, signedIn, openSignIn } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  // A failed load is not an empty account: never show zeros for it.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;
@@ -105,28 +109,36 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
           const mapped: DashboardStats = {
             availableBalance: Number(raw.available ?? raw.availableBalance ?? 0),
             pendingBalance: Number(raw.pending ?? raw.pendingBalance ?? 0),
-            totalRequests: Number(
-              (raw.requests_today ?? 0) + (raw.requests_month ?? 0) || raw.totalRequests || 0,
-            ),
-            successRate: Number(raw.success_rate ?? raw.successRate ?? 100),
+            requestsToday: Number(raw.requests_today ?? 0),
+            requestsMonth: Number(raw.requests_month ?? 0),
+            // The rate and the latency are averages over every request ever made. An older
+            // backend sends 100 with no requests, so only trust them once an endpoint has traffic.
+            successRate:
+              raw.success_rate != null &&
+              (raw.endpoints ?? []).some(ep => Number(ep.request_count ?? ep.requests ?? 0) > 0)
+                ? Number(raw.success_rate)
+                : null,
             endpoints: Array.isArray(raw.endpoints) ? raw.endpoints : [],
             transactions: Array.isArray(raw.transactions) ? raw.transactions : [],
-            health: raw.health || {
-              uptime: 100,
+            health: {
               avgLatency: Number(raw.avg_latency ?? 0),
-              status: raw.health_status ?? 'ONLINE',
+              status: raw.health_status ?? null,
             },
             settlements: Array.isArray(raw.settlements) ? raw.settlements : [],
           };
           setStats(mapped);
+          setLoadError(null);
         } else {
           setStats(EMPTY_STATS);
+          // Signed out is the guest view. Signed in with an error is a failed load.
+          setLoadError(signedIn ? raw?.error || 'Could not load your dashboard.' : null);
         }
         setLoading(false);
       } catch (err: unknown) {
-        console.warn('Dashboard fetch fallback to zero-state:', err);
         if (isMounted) {
           setStats(EMPTY_STATS);
+          // Signed out, the 401 is expected: that is the guest view, not a failed load.
+          setLoadError(signedIn ? errorMessage(err, 'Could not load your dashboard.') : null);
           setLoading(false);
         }
       }
@@ -153,6 +165,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   }
 
   const effectivePublisherId = getPublisherId() || publisherId || 'active';
+  // Signed in with no publisher: there is nothing to load yet, so say that, not an error.
+  const needsAccount = signedIn && !publisher;
+  // Signed out there are no figures to show. Zeros would read as someone's real account.
+  const showFigures = signedIn && !loadError && !needsAccount;
 
   return (
     <div className="flex">
@@ -178,16 +194,54 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
             </div>
           )}
 
+          {!signedIn && (
+            <EmptyState
+              title="Sign in to see your dashboard"
+              description="Balances, requests and settlements appear here once you sign in and create a publisher account."
+              action={
+                <Button variant="primary" size="sm" onClick={openSignIn}>
+                  Sign in
+                </Button>
+              }
+            />
+          )}
+
+          {needsAccount && (
+            <EmptyState
+              title="No publisher account yet"
+              description="Your dashboard starts once you create one. It takes one click."
+              action={
+                <Button variant="primary" size="sm" onClick={() => router.push('/start')}>
+                  Set up as a provider
+                </Button>
+              }
+            />
+          )}
+
+          {loadError && !needsAccount && (
+            <EmptyState
+              title="Could not load your dashboard"
+              description={`${loadError} No figures are shown, because none loaded.`}
+              action={
+                <Button variant="primary" size="sm" onClick={() => setRefreshKey(k => k + 1)}>
+                  Try again
+                </Button>
+              }
+            />
+          )}
+
           {/* Render Active Section */}
-          {activeSection === 'apis' && (
+          {showFigures && activeSection === 'apis' && (
             <ApisView stats={stats} publisherId={effectivePublisherId} />
           )}
 
-          {activeSection === 'analytics' && <AnalyticsView stats={stats} />}
+          {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
 
-          {activeSection === 'settings' && <SettingsView publisherId={effectivePublisherId} />}
+          {showFigures && activeSection === 'settings' && (
+            <SettingsView publisherId={effectivePublisherId} />
+          )}
 
-          {activeSection === 'overview' && (
+          {showFigures && activeSection === 'overview' && (
             <>
               <div className="flex justify-between items-end mb-8">
                 <div>
@@ -198,12 +252,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 bg-panel px-4 py-2 rounded-lg border border-border">
-                  <span className="relative flex h-3 w-3">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-accent"></span>
-                  </span>
                   <span className="text-sm font-medium">
-                    System {stats.health?.status || 'ONLINE'}
+                    {stats.health.status
+                      ? `Last health check: ${stats.health.status}`
+                      : 'No health check has run yet'}
                   </span>
                 </div>
               </div>
@@ -247,10 +299,11 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                     <Network size={64} />
                   </div>
                   <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
-                    Total Requests
+                    Requests this month
                   </h3>
-                  <div className="text-3xl font-mono">
-                    {(stats.totalRequests ?? 0).toLocaleString()}
+                  <div className="text-3xl font-mono">{stats.requestsMonth.toLocaleString()}</div>
+                  <div className="text-xs text-muted mt-1">
+                    Today: {stats.requestsToday.toLocaleString()}
                   </div>
                 </Card>
 
@@ -261,7 +314,9 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                   <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
                     Success Rate
                   </h3>
-                  <div className="text-3xl text-accent font-mono">{stats.successRate ?? 100}%</div>
+                  <div className="text-3xl text-accent font-mono">
+                    {stats.successRate === null ? UNKNOWN : `${stats.successRate}%`}
+                  </div>
                 </Card>
               </div>
 
@@ -423,26 +478,16 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                   <Card header="System Health">
                     <div className="flex flex-col gap-4">
                       <div className="flex justify-between items-center">
-                        <span className="text-muted text-sm">Uptime (30d)</span>
-                        <span className="font-medium text-sm text-accent">
-                          {stats.health?.uptime ?? 100}%
+                        <span className="text-muted text-sm">Last health check</span>
+                        <span className="font-medium text-sm">
+                          {stats.health.status ?? 'None yet'}
                         </span>
                       </div>
-                      <div className="w-full h-2 bg-panel rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-accent"
-                          style={{ width: `${stats.health?.uptime ?? 100}%` }}
-                        />
-                      </div>
-
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-muted text-sm">Avg Global Latency</span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted text-sm">Average latency, all requests</span>
                         <span className="font-medium text-sm font-mono">
-                          {stats.health?.avgLatency ?? 0}ms
+                          {stats.successRate === null ? UNKNOWN : `${stats.health.avgLatency}ms`}
                         </span>
-                      </div>
-                      <div className="w-full h-2 bg-panel rounded-full overflow-hidden">
-                        <div className="h-full w-[45%] bg-accent-dim" />
                       </div>
                     </div>
                   </Card>

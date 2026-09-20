@@ -11,6 +11,9 @@ import type { MarketplaceApi } from './client';
  */
 const BACKEND_ORIGIN = (process.env.BACKEND_ORIGIN || 'http://127.0.0.1:4402').replace(/\/$/, '');
 
+/** A measurement the backend may not have yet. Missing stays null so the UI shows a dash, not 0 or 100. */
+const measured = (value: unknown): number | null => (value == null ? null : Number(value));
+
 /** Shape from the backend is snake_case and partially optional; normalise it in one place. */
 export const normaliseApi = (api: Record<string, unknown>): MarketplaceApi => ({
   id: String(api.id ?? ''),
@@ -19,8 +22,8 @@ export const normaliseApi = (api: Record<string, unknown>): MarketplaceApi => ({
   publisherName: String(api.publisher_name ?? api.publisherName ?? 'Unknown'),
   description: String(api.description ?? `${api.name ?? 'This'} API`),
   pricePerRequest: Number(api.price_per_request ?? api.pricePerRequest ?? 0),
-  avgLatency: Number(api.avg_latency ?? api.avgLatency ?? 0),
-  uptime: Number(api.uptime ?? 100),
+  avgLatency: measured(api.avg_latency ?? api.avgLatency),
+  uptime: measured(api.uptime),
   skills:
     typeof api.skills === 'string'
       ? api.skills.split(',').filter(Boolean)

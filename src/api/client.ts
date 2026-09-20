@@ -144,9 +144,9 @@ export interface DashboardSettlementRow {
 }
 
 export interface DashboardHealth {
-  uptime: number;
   avgLatency: number;
-  status: string;
+  /** null until the backend has run a health check. */
+  status: string | null;
 }
 
 /** The normalised shape the dashboard view renders from. */
@@ -154,8 +154,10 @@ export interface DashboardStats {
   availableBalance: number;
   pendingBalance: number;
   settledBalance?: number;
-  totalRequests: number;
-  successRate: number;
+  requestsToday: number;
+  requestsMonth: number;
+  /** null until there is at least one request. */
+  successRate: number | null;
   endpoints: DashboardEndpointRow[];
   transactions: DashboardTransactionRow[];
   health: DashboardHealth;
@@ -178,11 +180,10 @@ export interface DashboardResponse {
   pendingBalance?: number;
   requests_today?: number;
   requests_month?: number;
-  totalRequests?: number;
-  success_rate?: number;
+  success_rate?: number | null;
   successRate?: number;
   avg_latency?: number;
-  health_status?: string;
+  health_status?: string | null;
   health?: DashboardHealth;
   endpoints?: DashboardEndpointRow[];
   transactions?: DashboardTransactionRow[];
@@ -196,8 +197,9 @@ export interface MarketplaceApi {
   publisherName: string;
   description: string;
   pricePerRequest: number;
-  avgLatency: number;
-  uptime: number;
+  /** null until the API has had a health check. Never a default. */
+  avgLatency: number | null;
+  uptime: number | null;
   skills: string[];
 }
 
@@ -354,6 +356,16 @@ export const apiClient = {
       );
       throw err;
     }
+    return res.json();
+  },
+
+  /** The payout wallet row, or null when none is set. */
+  async getWallet(publisherId: string): Promise<{ address?: string } | null> {
+    const res = await fetch(`${BASE_URL}/publishers/${publisherId}/wallet`, {
+      credentials: 'include',
+      headers: { ...authHeaders() },
+    });
+    if (!res.ok) throw new Error(`Could not read the payout wallet (${res.status})`);
     return res.json();
   },
 
