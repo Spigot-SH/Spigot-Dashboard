@@ -1,7 +1,7 @@
 'use client';
 
 import type { OnboardingData } from '../../types/onboarding';
-import { errorMessage } from '../../lib/errors';
+import { apiErrorMessage } from '../../lib/errors';
 import React, { useState } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
@@ -70,6 +70,10 @@ const Pricing: React.FC<PricingProps> = ({ data, updateData, onNext, onBack }) =
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Set when the backend answers 202: the address is not stored until the emailed code
+  // comes back with it. Holds the backend's own sentence, so the UI states one thing.
+  const [confirmNotice, setConfirmNotice] = useState('');
+  const [confirmationCode, setConfirmationCode] = useState('');
 
   const handleNext = async () => {
     if (validate()) {
@@ -89,16 +93,29 @@ const Pricing: React.FC<PricingProps> = ({ data, updateData, onNext, onBack }) =
         if (!data.publisherId) throw new Error('No publisher account yet.');
         // This is where revenue is paid out. An empty address must never reach the server.
         if (!data.settlementAddress) throw new Error('A settlement address is required.');
-        await apiClient.setWallet(data.publisherId, {
+        const saved = await apiClient.setWallet(data.publisherId, {
           address: data.settlementAddress,
-          chain: (data.settlementChain || 'ALGORAND').toUpperCase(),
+          // Lower case, because the backend matches chain names that way
+          // (`['ethereum', 'base', ...].includes(walletChain)`, `routes/publishers.ts:131`).
+          // Sent upper case, every EVM choice missed that list, fell through to the Algorand
+          // branch and a valid 0x address came back "Not a valid Algorand address".
+          chain: (data.settlementChain || 'algorand').toLowerCase(),
           settlement_frequency: data.settlementFrequency?.toLowerCase() || 'weekly',
           min_payout: parseFloat(String(data.minPayout ?? 10)),
+          ...(confirmationCode ? { confirmationCode: confirmationCode.trim() } : {}),
         });
 
+        if (!saved.saved) {
+          // Nothing moved. Ask for the code instead of advancing the wizard.
+          setConfirmNotice(saved.message);
+          return;
+        }
+
+        setConfirmNotice('');
+        setConfirmationCode('');
         onNext();
       } catch (err) {
-        setError(errorMessage(err, 'Failed to save pricing configuration'));
+        setError(apiErrorMessage(err, 'Failed to save pricing configuration'));
       } finally {
         setLoading(false);
       }
@@ -284,12 +301,33 @@ const Pricing: React.FC<PricingProps> = ({ data, updateData, onNext, onBack }) =
         </div>
       )}
 
+      {confirmNotice && (
+        <div className="mt-4 rounded border border-border bg-panel p-4">
+          <p className="text-sm text-main m-0">{confirmNotice}</p>
+          <div className="mt-3 max-w-[220px]">
+            <Input
+              label="Confirmation code"
+              placeholder="6 digits"
+              inputMode="numeric"
+              value={confirmationCode}
+              onChange={e => setConfirmationCode(e.target.value)}
+              helperText="The code expires 15 minutes after it is sent."
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between mt-4">
         <Button variant="ghost" onClick={onBack}>
           Back
         </Button>
-        <Button variant="primary" onClick={handleNext} disabled={loading} isLoading={loading}>
-          Continue to Testing
+        <Button
+          variant="primary"
+          onClick={handleNext}
+          disabled={loading || (Boolean(confirmNotice) && !confirmationCode.trim())}
+          isLoading={loading}
+        >
+          {confirmNotice ? 'Confirm and continue' : 'Continue to Testing'}
         </Button>
       </div>
     </div>

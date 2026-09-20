@@ -243,7 +243,7 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
           <p className="mt-4 text-xs text-muted border border-border rounded-md px-3 py-2 m-0">
             {!hasCredit
               ? 'Add credit on your Account page before making paid calls.'
-              : `Not enough credit — this call costs ${quote.pricePerRequest} and you have ${quote.balance.toFixed(2)}.`}
+              : `Not enough credit. This call costs ${quote.pricePerRequest} and you have ${quote.balance.toFixed(2)}.`}
           </p>
         )}
 

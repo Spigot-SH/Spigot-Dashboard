@@ -1,6 +1,7 @@
 'use client';
 
 import type { OnboardingData } from '../../types/onboarding';
+import { apiErrorMessage } from '../../lib/errors';
 import React, { useState } from 'react';
 import { Card } from '../common/Card';
 import { Input } from '../common/Input';
@@ -18,7 +19,7 @@ interface ApiInfoProps {
 const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const authType = data.authType || 'None';
+  const authType = data.authType || 'NONE';
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -43,11 +44,15 @@ const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) =
       if (errors[field]) setErrors({ ...errors, [field]: '' });
     };
 
-  const [, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  // A failed request is not a problem with the API Name field, which is where this used to
+  // be printed.
+  const [error, setError] = useState('');
 
   const handleContinue = async () => {
     if (validate()) {
       setLoading(true);
+      setError('');
       try {
         const authConfig: AuthConfig = {};
         if (authType === 'API_KEY') {
@@ -77,7 +82,7 @@ const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) =
         onNext();
       } catch (err) {
         console.error('Failed to create API:', err);
-        setErrors({ ...errors, apiName: 'Failed to create API configuration' });
+        setError(apiErrorMessage(err, 'Could not save this API configuration.'));
       } finally {
         setLoading(false);
       }
@@ -127,17 +132,23 @@ const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) =
               value={authType}
               onChange={handleChange('authType')}
             >
-              <option value="None">None (Public)</option>
+              {/*
+                OAuth 2.0 and Custom used to be offered here, with a note saying they were
+                configured "in the developer portal post-publishing". There is no such portal,
+                and `PUT /apis/:id/publish` refuses both
+                (`Spigot-Algorand/backend/src/routes/apis.ts:390`), because the gateway settles
+                payment before it proxies: the caller would pay and then receive the upstream's
+                401. Offering them cost a publisher every step up to publish before saying no.
+              */}
+              <option value="NONE">None (Public)</option>
               <option value="API_KEY">API Key</option>
               <option value="BEARER">Bearer Token</option>
-              <option value="OAUTH">OAuth 2.0</option>
               <option value="BASIC">Basic Auth</option>
-              <option value="CUSTOM">Custom</option>
             </Select>
 
             {/* Dynamic Auth Fields */}
             <div className="p-4 bg-bg border border-border rounded-lg mt-2">
-              {authType === 'None' && (
+              {authType === 'NONE' && (
                 <p className="text-sm text-muted">
                   No authentication required to access your backend API. Spigot will still handle
                   publisher billing.
@@ -191,13 +202,6 @@ const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) =
                   />
                 </div>
               )}
-
-              {(authType === 'OAUTH' || authType === 'CUSTOM') && (
-                <p className="text-sm text-warning">
-                  Advanced authentication configurations will be configured in the developer portal
-                  post-publishing.
-                </p>
-              )}
             </div>
 
             <div className="mt-4">
@@ -214,11 +218,17 @@ const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) =
         </div>
       </Card>
 
+      {error && (
+        <div className="p-3 bg-accent/10 text-accent text-sm rounded border border-accent/20 mt-4">
+          {error}
+        </div>
+      )}
+
       <div className="flex justify-between mt-4">
         <Button variant="ghost" onClick={onBack}>
           Back
         </Button>
-        <Button variant="primary" onClick={handleContinue}>
+        <Button variant="primary" onClick={handleContinue} disabled={loading} isLoading={loading}>
           Continue to Endpoints
         </Button>
       </div>

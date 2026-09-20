@@ -1,6 +1,7 @@
 'use client';
 
 import type { OnboardingData } from '../../types/onboarding';
+import { apiErrorMessage } from '../../lib/errors';
 import React, { useState } from 'react';
 import { Card } from '../common/Card';
 import { Input } from '../common/Input';
@@ -50,11 +51,15 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
       if (errors[field]) setErrors({ ...errors, [field]: '' });
     };
 
-  const [, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  // A failed request is not a problem with the Publisher Name field, which is where this
+  // used to be printed. It belongs beside the button that made the request.
+  const [error, setError] = useState('');
 
   const handleContinue = async () => {
     if (validate()) {
       setLoading(true);
+      setError('');
       try {
         const result = await apiClient.registerPublisher({
           name: data.publisherName,
@@ -72,7 +77,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
         onNext();
       } catch (err) {
         console.error(err);
-        setErrors({ ...errors, publisherName: 'Failed to register publisher. Please try again.' });
+        setError(apiErrorMessage(err, 'Could not create your publisher account.'));
       } finally {
         setLoading(false);
       }
@@ -150,8 +155,14 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
         </div>
       </Card>
 
+      {error && (
+        <div className="p-3 bg-accent/10 text-accent text-sm rounded border border-accent/20 mt-4">
+          {error}
+        </div>
+      )}
+
       <div className="flex justify-end mt-4">
-        <Button variant="primary" onClick={handleContinue}>
+        <Button variant="primary" onClick={handleContinue} disabled={loading} isLoading={loading}>
           Continue to Verification
         </Button>
       </div>

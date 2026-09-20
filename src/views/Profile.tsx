@@ -6,7 +6,7 @@ import { RefreshCw, Shield, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { creditsApi, CreditsOverview } from '../api/credits';
 import { apiErrorMessage } from '../lib/errors';
-import { formatCredit } from '../lib/format';
+import { formatCredit, UNKNOWN } from '../lib/format';
 import TopUpPanel from '../credits/TopUpPanel';
 import { Spinner } from '../components/common/Spinner';
 import { Button } from '../components/common/Button';
@@ -194,7 +194,7 @@ export default function Profile() {
         <div className="flex justify-between text-sm">
           <span className="text-muted">Methods</span>
           <span className="text-main">
-            {(user?.authProviders || []).map(p => SIGN_IN_LABEL[p] || p).join(', ') || '—'}
+            {(user?.authProviders || []).map(p => SIGN_IN_LABEL[p] || p).join(', ') || UNKNOWN}
           </span>
         </div>
       </div>

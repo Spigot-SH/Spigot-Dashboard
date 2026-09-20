@@ -159,9 +159,15 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     return (
       <div className="flex">
         <Sidebar publisherId={effectivePublisherId} view="caller" />
-        <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-8 py-8">
+        <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
           <div className="mx-auto max-w-[1400px]">
-            <CallerView />
+            {/* The caller console used to render `CallerView` for every section, so the
+                settings page existed but nothing in this view could reach it. */}
+            {activeSection === 'settings' ? (
+              <SettingsView publisherId={effectivePublisherId} />
+            ) : (
+              <CallerView />
+            )}
           </div>
         </div>
       </div>
@@ -186,7 +192,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     <div className="flex">
       <Sidebar publisherId={effectivePublisherId} />
 
-      <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-8 py-8">
+      <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
         <div className="max-w-[1400px] mx-auto">
           {needsAccount && (
             <EmptyState
@@ -220,9 +226,9 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
 
           {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
 
-          {showFigures && activeSection === 'settings' && (
-            <SettingsView publisherId={effectivePublisherId} />
-          )}
+          {/* Not behind `showFigures`: settings reads no dashboard figures, and a failed
+              stats request used to take the API key and the payout address down with it. */}
+          {activeSection === 'settings' && <SettingsView publisherId={effectivePublisherId} />}
 
           {showFigures && activeSection === 'overview' && (
             <>

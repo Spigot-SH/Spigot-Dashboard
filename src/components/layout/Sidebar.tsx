@@ -33,7 +33,16 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
 
   const navItems =
     view === 'caller'
-      ? [overview, { name: 'Account & credit', path: '/profile', icon: Wallet, exact: true }]
+      ? [
+          overview,
+          { name: 'Account & credit', path: '/profile', icon: Wallet, exact: true },
+          {
+            name: 'Settings',
+            path: `/dashboard/${publisherId}/settings`,
+            icon: Settings,
+            exact: false,
+          },
+        ]
       : [
           overview,
           { name: 'APIs', path: `/dashboard/${publisherId}/apis`, icon: Server, exact: false },
@@ -52,8 +61,11 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
         ];
 
   return (
-    <aside className="sticky top-16 flex h-[calc(100vh-64px)] w-[var(--sidebar-w)] shrink-0 flex-col border-r border-border bg-bg py-4">
-      <p className="mb-2 px-4 text-[0.7rem] font-medium uppercase tracking-wider text-muted">
+    // Below `md` the column is an icon rail. A fixed 240px column on a phone left the
+    // content about 80px wide; hiding the nav outright would leave the console with no way
+    // to move between sections at all.
+    <aside className="sticky top-16 flex h-[calc(100vh-64px)] w-14 shrink-0 flex-col border-r border-border bg-bg py-4 md:w-[var(--sidebar-w)]">
+      <p className="mb-2 hidden px-4 text-[0.7rem] font-medium uppercase tracking-wider text-muted md:block">
         {view === 'caller' ? 'Caller' : 'Developer'}
       </p>
 
@@ -73,14 +85,15 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
               // The highlight is a box inside the column, not a band across it: a margin on
               // both sides and a radius, so it reads as a selected item rather than a stripe.
               // `text-on-accent` is the token that stays legible on the fill in either theme.
-              className={`mx-2 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm no-underline ${
+              title={item.name}
+              className={`mx-2 flex items-center justify-center gap-0 rounded-lg px-0 py-2.5 text-sm no-underline md:justify-start md:gap-3 md:px-3 ${
                 isActive
                   ? 'bg-accent font-medium text-on-accent'
                   : 'text-muted hover:bg-panel-hover hover:text-main'
               }`}
             >
               <item.icon size={18} className={isActive ? 'text-on-accent' : 'text-muted'} />
-              <span>{item.name}</span>
+              <span className="hidden md:inline">{item.name}</span>
             </Link>
           );
         })}
@@ -99,10 +112,10 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
             type="button"
             disabled
             title={`${item.name} is not published yet`}
-            className="mx-2 flex items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 text-left text-sm text-muted opacity-50"
+            className="mx-2 flex items-center justify-center gap-0 rounded-lg border-0 bg-transparent px-0 py-2.5 text-left text-sm text-muted opacity-50 md:justify-start md:gap-3 md:px-3"
           >
             <item.icon size={18} />
-            <span>{item.name}</span>
+            <span className="hidden md:inline">{item.name}</span>
           </button>
         ))}
       </div>

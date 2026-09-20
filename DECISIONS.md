@@ -22,6 +22,78 @@ If you cannot fill in **Why**, there is no entry to write.
 
 ---
 
+## 2026-09-20 — The publish wizard stops inventing results; a payout address can be set on its own
+
+**Decided:** `setWallet` reads the 202 `confirmationRequired` answer and returns
+`{ saved: false, message }`, and both callers collect the emailed code and resend it before
+they treat the address as stored. The payout chain is sent in lower case. Step 5, Schema
+Validation, is deleted, so the wizard is nine steps. Step 7, Testing, shows the three fields
+`POST /apis/:id/test` measures instead of six named checks. Publishing lands on `/dashboard`.
+OAuth 2.0 and Custom are gone from the upstream auth select. Settings grows a payout form, the
+provider checklist links to it, and the caller console reaches Settings at all, with the API
+key, payout and gateway panes hidden from it. A failed settle whose outcome is unknown latches
+the withdraw button until the page is reloaded.
+
+**Why:** Five of these were code that reported something the backend never said.
+
+- `POST /publishers/:id/wallet` answers **202** with `{confirmationRequired: true}` when an
+  existing payout address is _changed_, and stores nothing until the same request returns with
+  `confirmationCode` (`Spigot-Algorand/backend/src/routes/publishers.ts:180`). 202 passes
+  `res.ok`, so the old `if (!res.ok) throw` returned it as success and the wizard advanced. The
+  publisher was told their money had been redirected when it had not. Money path.
+- The chain went up as `'ALGORAND'`. The backend matches lower case:
+  `['ethereum', 'base', 'arbitrum', 'optimism', 'avalanche', 'robinhood'].includes(walletChain)`
+  at `routes/publishers.ts:131`. `'BASE'` missed that list, fell through to
+  `algosdk.isValidAddress`, and a valid `0x` address came back "Not a valid Algorand address".
+  Every EVM payout choice in the wizard was unusable. Money path.
+- Schema Validation made no request. `const timer = setTimeout(() => setValidating(false), 1500)`
+  was the whole check, after which the step printed "N of N endpoints successfully validated"
+  and ticked Valid JSON, Required fields, Data types, Nested objects and Arrays for every
+  endpoint. Nothing in `Spigot-Algorand` validates a schema, so there was nothing to wire it to.
+- The health step named six checks over three fields. `dns_ok`, `auth_ok` and `schema_ok` are
+  written as literal `true` by `Spigot-Algorand/backend/src/services/health.ts:115`; the
+  certificate row read `https_ok` twice; every row defaulted `?? true`; and latency printed
+  `res.latency_ms || 42`. Its closing line read "All tests passed successfully! Your API is
+  fully compatible and responding within optimal latency limits."
+- `onPublish` pushed `/dashboard/new-pub-123`, an id belonging to no account, so a ten-step
+  wizard ended on a 403.
+- `PUT /apis/:id/publish` refuses OAUTH and CUSTOM (`routes/apis.ts:390`), because the gateway
+  settles payment before it proxies and the caller would pay for a 401. The select offered both
+  with a note saying they were configured "in the developer portal post-publishing". There is no
+  portal. A publisher found out six steps later.
+- The only wallet field in the app was step 6 of the wizard, behind domain verification, so
+  changing a payout address meant starting to publish another API. The Payout pane showed the
+  address and could not edit it.
+- `POST /dashboard/:id/settle` takes no idempotency key (`routes/dashboard.ts:154`) and
+  `processSettlement` holds no lock. `busy` blocked a second click only while the request was in
+  flight; a timeout re-enabled the button with the payout's outcome unknown, and the second
+  press would pay again. Money path.
+
+Checked: `npm run verify` exits 0 and `scripts/security-review.sh` prints `16 passed 0 failed
+0 unverified`. `/login`, `/onboarding`, `/start`, `/dashboard` and `/profile` all return 200
+from the dev server.
+
+**Rejected:** Rewriting Schema Validation as a real check. The only thing this repo could
+validate is the shape of endpoints it already imported, which is a restatement of step 4, not a
+schema check. Keeping DNS Lookup and Certificate Check as rows fed by `?? true`. Keeping the
+settle button live after an unknown outcome, which is a second payout one click away.
+
+**Reported, not fixed here (rule 3.7):** `checkApiHealth` hardcodes `dns_ok`, `auth_ok` and
+`schema_ok` to `true`, falls back to `latency_ms: 32 / 28 / 30` when the elapsed time is 0, and
+turns a failed `fetch` into `endpoint_ok = true, status = 'ONLINE'`
+(`Spigot-Algorand/backend/src/services/health.ts:72`-`:118`). An API that is down can report
+ONLINE. `POST /dashboard/:id/settle` has no idempotency key.
+
+**Files:** `src/api/client.ts`, `src/components/steps/Pricing.tsx`, `src/components/steps/ApiTesting.tsx`,
+`src/components/steps/ApiInfo.tsx`, `src/components/steps/BasicInfo.tsx`,
+`src/components/steps/ImportEndpoints.tsx`, `src/components/steps/Publish.tsx`,
+`src/components/steps/SchemaValidation.tsx` (deleted), `src/views/Onboarding.tsx`,
+`src/views/Dashboard.tsx`, `src/views/Start.tsx`, `src/views/Profile.tsx`,
+`src/views/ConsumerTest.tsx`, `src/components/dashboard/SettingsView.tsx`,
+`src/components/dashboard/SettlePanel.tsx`, `src/components/layout/Sidebar.tsx`,
+`src/types/onboarding.ts`, `src/app/layout.tsx`.
+**Ref:** uncommitted.
+
 ## 2026-09-20 — The lockfile is written with npm 10; the top-up modal settles into shape; no MoonPay
 
 **Decided:** `package-lock.json` is regenerated with npm 10 (`npx npm@10 install --package-lock-only`); `package.json` is unchanged. In the top-up modal: no amount is preselected and Continue is inert until one is; the custom amount is gone; back sits in the top row opposite close, with the step title under it; the card row names no processor and no currency; Algorand, Ethereum and a disabled Solana lead the wallet step, with other networks behind a select; a step change clears the previous step's error. The "Buy with MoonPay" row added earlier the same day is removed.
@@ -335,6 +407,12 @@ If you cannot fill in **Why**, there is no entry to write.
 
 | Idea                                                                      | Why it is dead                                                                                                                                                                                                                              | Ref                             |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| A 202 from `POST /publishers/:id/wallet` treated as a saved address       | It is the confirmation branch: the code is emailed and nothing is stored until it comes back. The publisher was told their payout address had moved when it had not                                                                         | 2026-09-20                      |
+| Sending the payout chain name in upper case                               | The backend matches `['ethereum', 'base', ...]` in lower case (`routes/publishers.ts:131`), so every EVM choice fell through to the Algorand branch and a valid `0x` address was refused as "Not a valid Algorand address"                  | 2026-09-20                      |
+| A schema validation step built on a `setTimeout`                          | It marked five named checks Passed for every endpoint without making a request. Nothing in `Spigot-Algorand` validates a schema, so there is no endpoint to wire a real one to                                                              | 2026-09-20                      |
+| Naming six health checks over three measured fields                       | `dns_ok`, `auth_ok` and `schema_ok` are literal `true` in `services/health.ts:115`, the certificate row was `https_ok` twice, and every row defaulted `?? true`. Show the three fields that carry a measurement                             | 2026-09-20                      |
+| Offering OAuth 2.0 and Custom as upstream auth                            | `PUT /apis/:id/publish` refuses both (`routes/apis.ts:390`): payment settles before the proxy call, so the caller would pay and receive the upstream's 401. Offering them cost the publisher every step up to publish                       | 2026-09-20                      |
+| Re-enabling the withdraw button after a settle whose outcome is unknown   | The settle endpoint takes no idempotency key (`routes/dashboard.ts:154`), so a second press after a timeout is a second payout. Only a refusal made before any money moved brings the button back                                           | 2026-09-20                      |
 | Merging `stealth-ref/` web code into `src/`                               | Different stack (vanilla HTML vs Next); it is an idea source, not a dependency                                                                                                                                                              | 2026-09-18                      |
 | Setting `NEXT_PUBLIC_BACKEND_URL` to reach the backend directly           | Calls become cross-origin and the `SameSite=Lax` session cookie is dropped; sign-in looks fine and every later request is unauthenticated                                                                                                   | inherited from x402 `deploy.md` |
 | Treating `BACKEND_ORIGIN` as a runtime setting                            | `next start` reads rewrite targets from the build manifest; a restart with a new value still proxies to the old one                                                                                                                         | 2026-09-19                      |

@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient, getApiKey, getPublisherId, setApiKey, setPublisherId } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { Button } from '../common/Button';
-import { errorMessage } from '../../lib/errors';
+import { apiErrorMessage, errorMessage } from '../../lib/errors';
+import { Input } from '../common/Input';
 import {
   ArrowLeft,
   Banknote,
@@ -48,6 +49,22 @@ const SECTIONS: { group: string; items: { id: SectionId; name: string; icon: typ
       { id: 'developer', name: 'Gateway', icon: Terminal },
     ],
   },
+];
+
+/**
+ * Where a payout can actually land. Every name here is a chain
+ * `Spigot-Algorand/backend/src/services/chains.ts` knows and `processSettlement` can pay; the
+ * values are lower case because that is how the backend matches them.
+ */
+const PAYOUT_CHAINS = [
+  { value: 'algorand', name: 'Algorand', placeholder: '58 characters' },
+  { value: 'base', name: 'Base', placeholder: '0x...' },
+  { value: 'ethereum', name: 'Ethereum', placeholder: '0x...' },
+  { value: 'arbitrum', name: 'Arbitrum', placeholder: '0x...' },
+  { value: 'optimism', name: 'Optimism', placeholder: '0x...' },
+  { value: 'avalanche', name: 'Avalanche', placeholder: '0x...' },
+  { value: 'stellar', name: 'Stellar', placeholder: 'G...' },
+  { value: 'solana', name: 'Solana', placeholder: 'Base58 address' },
 ];
 
 /** Label left with its explanation, control right. The row shape the whole page is built from. */
@@ -115,15 +132,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
   const [apiKey, setApiKeyState] = useState<string | null>(() => getApiKey());
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
-  const [payout, setPayout] = useState<{ address?: string } | null | 'loading' | 'error'>(
-    'loading',
+  const [payout, setPayout] = useState<
+    { address?: string; chain?: string } | null | 'loading' | 'error'
+  >('loading');
+  // The payout form. Before this existed the only way to set a payout address was step 6 of
+  // the publish wizard, behind five steps including domain verification, so a publisher who
+  // wanted to move where their money lands had to start publishing a new API to do it.
+  const [editingPayout, setEditingPayout] = useState(false);
+  const [payoutChain, setPayoutChain] = useState('algorand');
+  const [payoutAddress, setPayoutAddress] = useState('');
+  const [payoutCode, setPayoutCode] = useState('');
+  // The backend's own sentence when it answers 202: the change is not stored yet.
+  const [payoutNotice, setPayoutNotice] = useState('');
+  const [payoutError, setPayoutError] = useState('');
+  const [payoutSaving, setPayoutSaving] = useState(false);
+
+  /**
+   * A caller has no API key, no payout address and no gateway of their own, so those panes
+   * are not theirs. They do have the two under "Set up", which is why this page is now on the
+   * caller console's sidebar at all: before this, a caller could reach no settings page.
+   */
+  const mine = useMemo(
+    () => (view === 'caller' ? SECTIONS.filter(group => group.group === 'Set up') : SECTIONS),
+    [view],
   );
+
+  const onMyList = mine.some(group => group.items.some(item => item.id === active));
+  const pane: SectionId = onMyList ? active : 'general';
 
   const currentApiKey = apiKey || publisher?.api_key;
   const effectivePubId = publisher?.id || getPublisherId() || publisherId || 'active';
   const gatewayUrl =
     process.env.NEXT_PUBLIC_GATEWAY_URL ||
     (typeof window !== 'undefined' ? window.location.origin : 'https://spigot.sh');
+
+  // `/dashboard/:id/settings#payout` opens straight on the payout pane, which is what the
+  // provider checklist links to. Set after mount, not in the initial state: the server has no
+  // `window`, and rendering a different pane there is a hydration mismatch.
+  useEffect(() => {
+    const wanted = window.location.hash.replace('#', '');
+    if (mine.some(group => group.items.some(item => item.id === wanted))) {
+      setActive(wanted as SectionId);
+    }
+  }, [mine]);
 
   useEffect(() => {
     if (!publisher?.id) return;
@@ -136,6 +187,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       live = false;
     };
   }, [publisher?.id]);
+
+  const savePayout = async () => {
+    const address = payoutAddress.trim();
+    if (!address) {
+      setPayoutError('Enter the address your earnings should go to.');
+      return;
+    }
+    if (!publisher?.id) {
+      setPayoutError('No publisher account on this session.');
+      return;
+    }
+    setPayoutSaving(true);
+    setPayoutError('');
+    try {
+      const result = await apiClient.setWallet(publisher.id, {
+        address,
+        // Lower case: the backend matches chain names that way, and an upper-case name fell
+        // through to the Algorand branch, which rejected valid EVM addresses.
+        chain: payoutChain,
+        ...(payoutCode.trim() ? { confirmationCode: payoutCode.trim() } : {}),
+      });
+      if (!result.saved) {
+        // Nothing moved yet. The address changes only when the emailed code comes back.
+        setPayoutNotice(result.message);
+        return;
+      }
+      setPayout({ address: result.address, chain: payoutChain });
+      setEditingPayout(false);
+      setPayoutNotice('');
+      setPayoutCode('');
+      setPayoutAddress('');
+    } catch (err) {
+      setPayoutError(apiErrorMessage(err, 'Could not save that payout address.'));
+    } finally {
+      setPayoutSaving(false);
+    }
+  };
 
   /**
    * Command-F focuses the filter rather than opening the browser's find bar.
@@ -180,14 +268,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return SECTIONS;
-    return SECTIONS.map(s => ({
-      ...s,
-      items: s.items.filter(
-        i => i.name.toLowerCase().includes(q) || s.group.toLowerCase().includes(q),
-      ),
-    })).filter(s => s.items.length > 0);
-  }, [query]);
+    if (!q) return mine;
+    return mine
+      .map(s => ({
+        ...s,
+        items: s.items.filter(
+          i => i.name.toLowerCase().includes(q) || s.group.toLowerCase().includes(q),
+        ),
+      }))
+      .filter(s => s.items.length > 0);
+  }, [query, mine]);
 
   const iconButton =
     'rounded-md p-2 text-muted hover:bg-panel-hover hover:text-main cursor-pointer border-0 bg-transparent';
@@ -243,9 +333,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                 key={item.id}
                 type="button"
                 onClick={() => setActive(item.id)}
-                aria-current={active === item.id ? 'page' : undefined}
+                aria-current={pane === item.id ? 'page' : undefined}
                 className={`flex w-full items-center gap-2.5 rounded-lg border-0 px-2.5 py-2 text-left text-sm cursor-pointer ${
-                  active === item.id
+                  pane === item.id
                     ? 'bg-accent font-medium text-on-accent'
                     : 'bg-transparent text-muted hover:bg-panel-hover hover:text-main'
                 }`}
@@ -260,7 +350,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       </nav>
 
       <div className="min-w-0 flex-1 max-w-3xl">
-        {active === 'general' && (
+        {pane === 'general' && (
           <Pane title="General" hint="How the console looks and where it opens.">
             <Group title="Appearance">
               <Row label="Theme" hint="Applies to this browser only.">
@@ -299,7 +389,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
           </Pane>
         )}
 
-        {active === 'account' && (
+        {pane === 'account' && (
           <Pane title="Profile" hint="Who your callers see, and where we reach you.">
             <Row label="Publisher name">
               <span className="text-sm text-main">
@@ -331,7 +421,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
           </Pane>
         )}
 
-        {active === 'payout' && (
+        {pane === 'payout' && (
           <Pane title="Payout" hint="Where your earnings go when you withdraw.">
             <Row
               label="To my wallet"
@@ -342,13 +432,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                     ? 'Could not check your payout destination.'
                     : payout?.address
                       ? `Currently ${payout.address.slice(0, 10)}…${payout.address.slice(-6)}`
-                      : 'No destination set yet. You choose one when you publish an API.'
+                      : 'No destination set yet. Nothing can be withdrawn until you set one.'
               }
             >
-              <span className="rounded-full border border-success/40 bg-success/10 px-3 py-1 text-xs text-success">
-                Available
-              </span>
+              {payout !== 'loading' && payout !== 'error' && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setEditingPayout(!editingPayout);
+                    setPayoutError('');
+                    setPayoutNotice('');
+                    setPayoutChain(payout?.chain?.toLowerCase() || 'algorand');
+                  }}
+                >
+                  {editingPayout ? 'Cancel' : payout?.address ? 'Change' : 'Set address'}
+                </Button>
+              )}
             </Row>
+
+            {editingPayout && (
+              <div className="border-b border-border py-5 last:border-0">
+                <div className="flex flex-col gap-4 sm:max-w-md">
+                  <Select
+                    label="Network"
+                    value={payoutChain}
+                    onChange={e => setPayoutChain(e.target.value)}
+                  >
+                    {PAYOUT_CHAINS.map(chain => (
+                      <option key={chain.value} value={chain.value}>
+                        {chain.name}
+                      </option>
+                    ))}
+                  </Select>
+
+                  <Input
+                    label="Address"
+                    value={payoutAddress}
+                    onChange={e => setPayoutAddress(e.target.value)}
+                    placeholder={
+                      PAYOUT_CHAINS.find(c => c.value === payoutChain)?.placeholder || ''
+                    }
+                    helperText="Earnings are sent here in USDC when you withdraw."
+                  />
+
+                  {payoutNotice && (
+                    <>
+                      <p className="m-0 text-sm text-main">{payoutNotice}</p>
+                      <Input
+                        label="Confirmation code"
+                        value={payoutCode}
+                        onChange={e => setPayoutCode(e.target.value)}
+                        placeholder="6 digits"
+                        inputMode="numeric"
+                        helperText="The code expires 15 minutes after it is sent."
+                      />
+                    </>
+                  )}
+
+                  {payoutError && <p className="m-0 text-sm text-error">{payoutError}</p>}
+
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={savePayout}
+                      isLoading={payoutSaving}
+                      disabled={payoutSaving || (Boolean(payoutNotice) && !payoutCode.trim())}
+                    >
+                      {payoutNotice ? 'Confirm change' : 'Save address'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <Row
               label="To my bank"
               hint="Take earnings as cash instead. Not available yet; wallet payout works today."
@@ -360,7 +517,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
           </Pane>
         )}
 
-        {active === 'key' && (
+        {pane === 'key' && (
           <Pane title="API key" hint="Used by the Spigot CLI and SDKs to manage your endpoints.">
             <Row label="Secret key" hint="Treat it like a password. Anyone holding it acts as you.">
               {currentApiKey ? (
@@ -405,7 +562,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
           </Pane>
         )}
 
-        {active === 'developer' && (
+        {pane === 'developer' && (
           <Pane title="Gateway" hint="The origin your callers send requests to.">
             <Row label="Gateway origin" hint="Your endpoints are served from under this address.">
               <div className="flex items-center gap-2">

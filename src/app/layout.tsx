@@ -26,7 +26,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL('https://spigot.sh'),
   title: {
-    default: 'Spigot — APIs, metered per call',
+    default: 'Spigot: APIs, metered per call',
     template: '%s · Spigot',
   },
   description: 'Publish an API and get paid per request. No subscription, no signup for callers.',

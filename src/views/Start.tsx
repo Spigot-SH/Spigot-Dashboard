@@ -145,7 +145,10 @@ export default function Start() {
       title: 'Set your payout wallet',
       done: known(progress?.hasWallet),
       todo: 'No payout wallet yet. Payouts go to a testnet USDC wallet you control.',
-      action: <LinkButton href="/onboarding" label="Set wallet" />,
+      // Settings, not `/onboarding`: the wizard only reaches a wallet field at step 6, behind
+      // five steps including domain verification, so this link used to ask for a whole API
+      // to set one address.
+      action: publisher ? <LinkButton href={`${settings}#payout`} label="Set wallet" /> : null,
     },
     {
       key: 'test',

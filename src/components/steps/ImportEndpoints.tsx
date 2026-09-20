@@ -60,7 +60,7 @@ const ImportEndpoints: React.FC<ImportEndpointsProps> = ({ data, updateData, onN
 
   const handleSpecFile = async (file: File) => {
     if (!data.apiId) {
-      setError('Register the API first — the import needs somewhere to attach the endpoints.');
+      setError('Register the API first. The import needs somewhere to attach the endpoints.');
       return;
     }
     try {
@@ -100,7 +100,7 @@ const ImportEndpoints: React.FC<ImportEndpointsProps> = ({ data, updateData, onN
       setLoading(true);
       setError('');
       if (!data.apiId) {
-        throw new Error('No API registered yet — complete the API configuration step first.');
+        throw new Error('No API registered yet. Complete the API configuration step first.');
       }
       await apiClient.updateApiEndpoints(data.apiId, endpoints);
       onNext();
@@ -283,7 +283,7 @@ const ImportEndpoints: React.FC<ImportEndpointsProps> = ({ data, updateData, onN
           disabled={endpoints.length === 0 || loading}
           isLoading={loading}
         >
-          Continue to Configuration
+          Continue to Categories
         </Button>
       </div>
     </div>

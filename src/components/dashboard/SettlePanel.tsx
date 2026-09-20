@@ -18,8 +18,30 @@ interface Props {
  * Vendors never hold a wallet on this platform — earnings accrue as a balance and this is
  * the way out of it, so the amount at risk on the platform is whatever they choose to leave.
  */
+/**
+ * Refusals the backend makes before it moves any money: nothing is due, no payout address is
+ * set, the balance is under the publisher's own minimum. Pressing the button again after one
+ * of these cannot pay twice, so the button comes back.
+ *
+ * Anything else, including a `FAILED` transfer and a request that never returned, leaves the
+ * outcome unknown to this page. `POST /dashboard/:id/settle` takes no idempotency key
+ * (`Spigot-Algorand/backend/src/routes/dashboard.ts:154`), so a second press after a timeout
+ * is a second payout. The button stays down and the publisher is told to reload first.
+ */
+const SAFE_TO_RETRY = ['NOTHING_DUE', 'NO_WALLET', 'BELOW_MINIMUM'];
+
+const refusedBeforePaying = (err: unknown): boolean => {
+  const body = (err as { body?: { status?: unknown } } | null)?.body;
+  return typeof body?.status === 'string' && SAFE_TO_RETRY.includes(body.status);
+};
+
+const shorten = (address: string): string =>
+  address.length > 20 ? `${address.slice(0, 10)}...${address.slice(-6)}` : address;
+
 const SettlePanel: React.FC<Props> = ({ publisherId, available, onSettled }) => {
   const [busy, setBusy] = useState(false);
+  // Latched when a payout's outcome is unknown. Only a reload clears it.
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
   const [result, setResult] = useState<{
     ok: boolean;
     message: string;
@@ -31,17 +53,23 @@ const SettlePanel: React.FC<Props> = ({ publisherId, available, onSettled }) => 
     setResult(null);
     try {
       const response = await apiClient.settle(publisherId);
+      const paidTo = response.walletAddress
+        ? shorten(response.walletAddress)
+        : 'your payout address';
       setResult({
         ok: true,
-        message: `Paid $${Number(response.settlement?.amount ?? 0).toFixed(6)} to your payout address.`,
+        message: `Paid $${Number(response.settlement?.amount ?? 0).toFixed(6)} to ${paidTo}.`,
         explorerUrl: response.explorerUrl,
       });
       onSettled();
     } catch (err) {
-      // The endpoint distinguishes nothing-due, no-wallet, below-minimum and failure.
+      const unknown = !refusedBeforePaying(err);
+      setOutcomeUnknown(unknown);
       setResult({
         ok: false,
-        message: apiErrorMessage(err, 'Settlement failed'),
+        message: unknown
+          ? `${apiErrorMessage(err, 'Settlement failed')} Reload this page before trying again: this payout may still have been sent, and a second attempt would send it twice.`
+          : apiErrorMessage(err, 'Settlement failed'),
       });
     } finally {
       setBusy(false);
@@ -63,11 +91,15 @@ const SettlePanel: React.FC<Props> = ({ publisherId, available, onSettled }) => 
         <button
           type="button"
           onClick={handleSettle}
-          disabled={busy || available <= 0}
+          disabled={busy || outcomeUnknown || available <= 0}
           className="flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer border bg-main text-bg border-main disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy && <Spinner size={15} />}
-          {available > 0 ? `Withdraw $${available.toFixed(4)}` : 'Nothing to withdraw'}
+          {outcomeUnknown
+            ? 'Reload to check'
+            : available > 0
+              ? `Withdraw $${available.toFixed(4)}`
+              : 'Nothing to withdraw'}
         </button>
       </div>
 

@@ -36,12 +36,12 @@ export interface OnboardingData {
   baseUrl?: string;
   apiDocsUrl?: string;
   /**
-   * Only `API_KEY`, `BEARER` and `BASIC` are actually applied by `services/proxy.ts`.
-   * `OAUTH` and `CUSTOM` are offered by the UI but unimplemented — publishing with them is
-   * blocked server-side, because the consumer would pay and then get a 401 from upstream.
-   * `'None'` is the legacy spelling the select still emits; the backend expects `'NONE'`.
+   * Only `API_KEY`, `BEARER` and `BASIC` are applied by `services/proxy.ts`, and those three
+   * plus `NONE` are what `PUT /apis/:id/publish` accepts. `OAUTH` and `CUSTOM` were offered
+   * by this select until 2026-09-20; publishing with either is refused server-side, because
+   * the consumer would pay and then get a 401 from upstream.
    */
-  authType?: 'NONE' | 'None' | 'API_KEY' | 'BEARER' | 'BASIC' | 'OAUTH' | 'CUSTOM';
+  authType?: 'NONE' | 'API_KEY' | 'BEARER' | 'BASIC';
   apiKeyHeader?: string;
   apiKeyValue?: string;
   bearerToken?: string;

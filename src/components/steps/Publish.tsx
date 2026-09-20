@@ -43,7 +43,7 @@ const Publish: React.FC<PublishProps> = ({ data, onBack, onPublish }) => {
       }
 
       if (!data.apiId) {
-        throw new Error('No API to publish — the API configuration step did not complete.');
+        throw new Error('No API to publish. The API configuration step did not complete.');
       }
       await apiClient.publishApi(data.apiId);
 

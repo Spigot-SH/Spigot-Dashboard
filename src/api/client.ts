@@ -81,11 +81,10 @@ export interface ApiInfo {
   version: string;
   baseUrl: string;
   /**
-   * Both spellings are accepted. `'None'` is the legacy value the onboarding select still
-   * emits; the backend uppercases before validating, so it keeps working. Mirrors
-   * `OnboardingData.authType`.
+   * The four schemes `services/proxy.ts` can actually attach to an upstream request, which
+   * are the four `PUT /apis/:id/publish` accepts. Mirrors `OnboardingData.authType`.
    */
-  authType: 'NONE' | 'None' | 'API_KEY' | 'BEARER' | 'OAUTH' | 'BASIC' | 'CUSTOM';
+  authType: 'NONE' | 'API_KEY' | 'BEARER' | 'BASIC';
   authConfig?: AuthConfig;
   rateLimitConfig?: RateLimitConfig;
   docsUrl?: string;
@@ -217,6 +216,15 @@ export interface HealthReport {
 }
 
 /**
+ * Result of `POST /publishers/:id/wallet`.
+ *
+ * Setting a payout address for the first time saves it outright. Changing one already on the
+ * account needs an emailed code first, which is what `saved: false` reports.
+ */
+export type WalletSaveResult =
+  { saved: true; id: string; address: string } | { saved: false; message: string };
+
+/**
  * Result of `POST /dashboard/:id/settle`.
  *
  * Only `PAID` returns 200 — every other status arrives as a non-ok response and is thrown,
@@ -243,8 +251,19 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Failed to register publisher');
-    return res.json();
+    const body = await res.json().catch(() => ({}));
+    // The backend says why it refused (a domain already registered, an invalid email). A
+    // fixed string here threw that away and the step showed "Please try again" for a
+    // problem trying again cannot solve.
+    if (!res.ok) {
+      throw Object.assign(
+        new Error(body?.error || body?.message || 'Failed to register publisher'),
+        {
+          body,
+        },
+      );
+    }
+    return body;
   },
 
   async initiateVerification(
@@ -275,8 +294,13 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Failed to create API');
-    return res.json();
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw Object.assign(new Error(body?.error || body?.message || 'Failed to create API'), {
+        body,
+      });
+    }
+    return body;
   },
 
   async updateApiEndpoints(apiId: string, endpoints: ApiEndpoint[]): Promise<{ count: number }> {
@@ -347,7 +371,7 @@ export const apiClient = {
   },
 
   /** The payout wallet row, or null when none is set. */
-  async getWallet(publisherId: string): Promise<{ address?: string } | null> {
+  async getWallet(publisherId: string): Promise<{ address?: string; chain?: string } | null> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/wallet`, {
       credentials: 'include',
       headers: { ...authHeaders() },
@@ -358,16 +382,40 @@ export const apiClient = {
 
   async setWallet(
     publisherId: string,
-    data: { address: string; chain?: string; settlement_frequency?: string; min_payout?: number },
-  ): Promise<{ id: string; address: string }> {
+    data: {
+      address: string;
+      chain?: string;
+      settlement_frequency?: string;
+      min_payout?: number;
+      confirmationCode?: string;
+    },
+  ): Promise<WalletSaveResult> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/wallet`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Failed to set wallet');
-    return res.json();
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw Object.assign(new Error(body?.error || body?.message || 'Failed to set wallet'), {
+        body,
+      });
+    }
+    // Changing an address that is already set answers 202 and emails a six-digit code; the
+    // address is not stored until the same request comes back carrying it. 202 is `res.ok`,
+    // so a caller that only checks `ok` tells the publisher their payout address moved when
+    // it did not. Send the code back through `confirmationCode` to finish the change.
+    if (body?.confirmationRequired) {
+      return {
+        saved: false,
+        message:
+          typeof body.message === 'string' && body.message
+            ? body.message
+            : 'We emailed a confirmation code. Enter it to move your payout address.',
+      };
+    }
+    return { saved: true, id: body.id, address: body.address };
   },
 
   async settle(publisherId: string): Promise<SettleResult> {
