@@ -151,7 +151,9 @@ export const ApisView: React.FC<ApisViewProps> = ({ stats, publisherId: _publish
                     <Td>
                       <button
                         type="button"
-                        onClick={() => router.push(`/test/${ep.api_name || 'active'}`)}
+                        onClick={() =>
+                          router.push(`/test/${ep.api_slug || ep.api_name || 'active'}`)
+                        }
                         className="flex items-center gap-1 text-xs text-muted hover:text-accent font-medium cursor-pointer"
                       >
                         <ExternalLink size={13} /> Test

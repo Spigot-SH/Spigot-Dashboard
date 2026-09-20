@@ -38,7 +38,14 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
       if (!apiSlug) return;
       try {
         const apis = await (await fetch('/api/apis')).json();
-        const match = apis.find((a: { slug: string }) => a.slug === apiSlug);
+        const decoded = decodeURIComponent(apiSlug).trim().toLowerCase();
+        const match = apis.find(
+          (a: { id?: string; slug?: string; name?: string }) =>
+            (a.slug && a.slug.toLowerCase() === decoded) ||
+            (a.name && a.name.toLowerCase() === decoded) ||
+            a.id === apiSlug ||
+            a.slug === apiSlug,
+        );
         if (match) {
           const detail: ApiDetail = await (await fetch(`/api/apis/${match.id}`)).json();
           setApiInfo(detail);
@@ -54,20 +61,22 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
   }, [apiSlug]);
 
   const loadQuote = useCallback(async () => {
-    if (!apiSlug || !signedIn) return;
+    const effectiveSlug = apiInfo?.api?.slug || apiSlug;
+    if (!effectiveSlug || !signedIn) return;
     try {
-      setQuote(await authApi.quote(apiSlug));
+      setQuote(await authApi.quote(effectiveSlug));
     } catch {
       setQuote(null);
     }
-  }, [apiSlug, signedIn]);
+  }, [apiInfo?.api?.slug, apiSlug, signedIn]);
 
   useEffect(() => {
     void loadQuote();
   }, [loadQuote, credits]);
 
   const handleCall = async () => {
-    if (!apiSlug || !selectedEndpointId) return;
+    const effectiveSlug = apiInfo?.api?.slug || apiSlug;
+    if (!effectiveSlug || !selectedEndpointId) return;
     setState('paying');
     setError(null);
     setResult(null);
@@ -79,7 +88,7 @@ const ConsumerTest: React.FC<ConsumerTestProps> = ({ apiSlug }) => {
        * param priority over the publisher's own payout wallet, so a picker defaulted to
        * "Algorand" silently overrode where the publisher had asked to be paid.
        */
-      const response = await authApi.consume(apiSlug, {
+      const response = await authApi.consume(effectiveSlug, {
         endpointId: selectedEndpointId,
       });
       setResult(response);
