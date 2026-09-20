@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { useWallet } from '@txnlab/use-wallet-react';
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle,
   CreditCard,
   ExternalLink,
@@ -87,11 +86,34 @@ const encodePayment = (network: string, payload: unknown): string =>
  */
 const LOGO = (name: string) => `/dashboard/logos/${name}.svg`;
 
-const NETWORKS: { key: WalletKind; name: string; logo: string }[] = [
+/**
+ * The three networks offered first, then everything else behind a select.
+ *
+ * Solana is listed and disabled on purpose. The Solana path was deleted earlier because both
+ * of its branches POSTed a string nothing had signed, and there is still no Solana signer
+ * here: `@solana/web3.js` is not a dependency, so no transaction can be built, and the
+ * backend requires `payload.transaction` for a Solana payment
+ * (`Spigot-Algorand/backend/src/services/facilitator.ts:259`). Showing it greyed with the
+ * reason is honest; showing it live would be a button that can only fail.
+ */
+const PRIMARY_NETWORKS: {
+  key: WalletKind | 'solana';
+  name: string;
+  logo: string;
+  disabledReason?: string;
+}[] = [
   { key: 'algorand', name: 'Algorand', logo: LOGO('algorand') },
-  { key: 'evm', name: 'Ethereum and L2s', logo: LOGO('ethereum') },
-  { key: 'stellar', name: 'Stellar', logo: LOGO('stellar') },
+  { key: 'evm', name: 'Ethereum', logo: LOGO('ethereum') },
+  {
+    key: 'solana',
+    name: 'Solana',
+    logo: LOGO('solana'),
+    disabledReason: 'Solana payments are not available yet. No wallet can sign one here.',
+  },
 ];
+
+/** Everything that is not a headline network. Selecting one switches the wallet step to it. */
+const OTHER_NETWORKS: { key: WalletKind; name: string }[] = [{ key: 'stellar', name: 'Stellar' }];
 
 /** The mark if its file is there, nothing if it is not. Never a stand-in shape. */
 const BrandLogo: React.FC<{ src: string; size?: number }> = ({ src, size = 22 }) => {
@@ -143,7 +165,12 @@ const Choice: React.FC<{
       <span className="block text-sm font-medium text-main">{title}</span>
       <span className="mt-0.5 block text-xs leading-relaxed text-muted">{hint}</span>
     </span>
-    {marks && <span className="ml-2 flex shrink-0 items-center gap-1.5 self-center">{marks}</span>}
+    {/* Always rendered, even when empty. The marks used to be an optional sibling, so a row
+        that had them gave its text less width than a row that did not and the titles stopped
+        lining up down the list. A fixed column keeps every row identical. */}
+    <span className="flex w-14 shrink-0 flex-wrap items-center justify-end gap-1.5 self-start pt-0.5">
+      {marks}
+    </span>
   </button>
 );
 
@@ -188,7 +215,8 @@ export const AddCreditModal: React.FC<{
 
   const [step, setStep] = useState<Step>('amount');
   const [walletKind, setWalletKind] = useState<WalletKind>('algorand');
-  const [selected, setSelected] = useState<string>('starter');
+  // Empty until the caller picks. Nothing is chosen for them.
+  const [selected, setSelected] = useState<string>('');
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ credited: number; explorerUrl?: string } | null>(null);
@@ -218,12 +246,6 @@ export const AddCreditModal: React.FC<{
     script.async = true;
     document.body.appendChild(script);
   }, [isOpen]);
-
-  useEffect(() => {
-    if (overview?.tiers.length && !overview.tiers.some(t => t.id === selected)) {
-      setSelected(overview.tiers[0].id);
-    }
-  }, [overview, selected]);
 
   /**
    * The amount is always one of the server's tiers, never a number typed here.
@@ -440,7 +462,7 @@ export const AddCreditModal: React.FC<{
     // Reset on the way out, so reopening is a fresh top-up rather than the last receipt,
     // and lands on the first tier rather than whatever was picked last time.
     setStep('amount');
-    if (overview?.tiers.length) setSelected(overview.tiers[0].id);
+    setSelected('');
     setError(null);
     setReceipt(null);
     setStage('idle');
@@ -455,7 +477,22 @@ export const AddCreditModal: React.FC<{
         : 'Pay from a wallet';
 
   return (
-    <Modal isOpen={isOpen} onClose={close} title={title}>
+    <Modal
+      isOpen={isOpen}
+      onClose={close}
+      title={title}
+      onBack={
+        receipt || step === 'amount'
+          ? undefined
+          : () => {
+              // Without this a failure from the step being left, "Razorpay is not
+              // configured" for instance, stays on screen under the next step's controls.
+              setError(null);
+              setStep(step === 'crypto' ? 'method' : 'amount');
+            }
+      }
+      backLabel={step === 'crypto' ? 'Payment method' : 'Change amount'}
+    >
       {receipt ? (
         <div className="flex flex-col gap-4">
           <div
@@ -485,17 +522,6 @@ export const AddCreditModal: React.FC<{
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {step !== 'amount' && (
-            <button
-              type="button"
-              onClick={() => setStep(step === 'crypto' ? 'method' : 'amount')}
-              className="inline-flex w-fit cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-xs text-muted hover:text-main"
-            >
-              <ArrowLeft size={13} />
-              {step === 'crypto' ? 'Payment method' : 'Change amount'}
-            </button>
-          )}
-
           {step === 'amount' && (
             <>
               <div className="grid grid-cols-3 gap-2">
@@ -505,10 +531,10 @@ export const AddCreditModal: React.FC<{
                     type="button"
                     aria-pressed={selected === tier.id}
                     onClick={() => setSelected(tier.id)}
-                    className={`cursor-pointer rounded-md border px-3 py-4 text-center text-lg ${
+                    className={`cursor-pointer rounded-md border-0 px-3 py-4 text-center text-lg ${
                       selected === tier.id
-                        ? 'border-main bg-main font-semibold text-bg'
-                        : 'border-border bg-bg text-main hover:border-white/30'
+                        ? 'bg-main font-semibold text-bg'
+                        : 'bg-bg text-main hover:bg-panel-hover'
                     }`}
                   >
                     {tier.label}
@@ -516,13 +542,16 @@ export const AddCreditModal: React.FC<{
                 ))}
               </div>
 
+              {/* Secondary until an amount is picked, so the button reads as inert rather
+                  than as an accented call to action that refuses the click. */}
               <Button
                 type="button"
+                variant={chosenTier ? 'primary' : 'secondary'}
                 onClick={() => setStep('method')}
                 disabled={!chosenTier}
                 className="w-full"
               >
-                {chosenTier ? `Continue with ${chosenTier.label}` : 'Choose an amount'}
+                Continue
               </Button>
             </>
           )}
@@ -537,17 +566,19 @@ export const AddCreditModal: React.FC<{
               </div>
               <Choice
                 icon={<CreditCard size={18} />}
-                title="Card or UPI"
-                hint="Through Razorpay. You are charged in rupees, and Razorpay shows the amount before you confirm."
+                title="Card, UPI or netbanking"
+                hint="The exact amount and currency are shown by the payment page before you confirm."
                 onClick={payByCard}
                 disabled={busy}
-                marks={<BrandLogo src={LOGO('razorpay')} size={18} />}
               />
               <Choice
                 icon={<Wallet size={18} />}
                 title="Crypto wallet"
                 hint="A wallet you already hold, on Algorand, Ethereum and its L2s, or Stellar. Scan a code to use one on your phone."
-                onClick={() => setStep('crypto')}
+                onClick={() => {
+                  setError(null);
+                  setStep('crypto');
+                }}
                 disabled={busy}
                 marks={
                   <>
@@ -565,7 +596,7 @@ export const AddCreditModal: React.FC<{
                         className="h-[18px] w-[18px] rounded-sm object-contain"
                       />
                     ))}
-                    {NETWORKS.map(net => (
+                    {PRIMARY_NETWORKS.filter(n => !n.disabledReason).map(net => (
                       <BrandLogo key={net.key} src={net.logo} size={18} />
                     ))}
                   </>
@@ -595,24 +626,43 @@ export const AddCreditModal: React.FC<{
                   Network
                 </span>
                 <div className="grid grid-cols-3 gap-2">
-                  {NETWORKS.map(net => (
-                    <button
-                      key={net.key}
-                      type="button"
-                      aria-pressed={walletKind === net.key}
-                      onClick={() => setWalletKind(net.key)}
-                      className={`flex cursor-pointer flex-col items-center gap-2 whitespace-normal rounded-md border px-2 py-3 text-center text-xs ${
-                        walletKind === net.key
-                          ? 'border-main bg-panel-hover text-main'
-                          : 'border-border bg-bg text-muted hover:border-white/30 hover:text-main'
-                      }`}
-                    >
-                      <BrandLogo src={net.logo} />
-                      {net.name}
-                    </button>
-                  ))}
+                  {PRIMARY_NETWORKS.map(net => {
+                    const on = walletKind === net.key;
+                    return (
+                      <button
+                        key={net.key}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={Boolean(net.disabledReason)}
+                        title={net.disabledReason}
+                        onClick={() => setWalletKind(net.key as WalletKind)}
+                        className={`flex cursor-pointer flex-col items-center justify-center gap-2 whitespace-normal rounded-lg border px-2 py-4 text-center text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
+                          on
+                            ? 'border-main bg-panel-hover font-medium text-main'
+                            : 'border-border bg-bg text-muted hover:border-white/30 hover:text-main'
+                        }`}
+                      >
+                        <BrandLogo src={net.logo} />
+                        {net.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+
+              {/* The long tail. A network the caller rarely picks does not deserve a tile. */}
+              <Select
+                label="Other networks"
+                value={OTHER_NETWORKS.some(n => n.key === walletKind) ? walletKind : ''}
+                onChange={e => e.target.value && setWalletKind(e.target.value as WalletKind)}
+              >
+                <option value="">Choose a network</option>
+                {OTHER_NETWORKS.map(n => (
+                  <option key={n.key} value={n.key}>
+                    {n.name}
+                  </option>
+                ))}
+              </Select>
 
               {walletKind === 'evm' && (
                 <Select label="Chain" value={evmChain} onChange={e => setEvmChain(e.target.value)}>
