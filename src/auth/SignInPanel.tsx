@@ -339,3 +339,6 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
     </>
   );
 };
+
+export default SignInPanel;
+
