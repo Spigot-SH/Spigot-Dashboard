@@ -3,7 +3,7 @@
 import { errorMessage } from '../lib/errors';
 import React, { useEffect, useState } from 'react';
 import { Mail, KeyRound, ArrowLeft, ArrowRight, CheckCircle, Link2 } from 'lucide-react';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { authApi } from '../api/auth';
 import { useAuth } from './AuthContext';
 import { Spinner } from '../components/common/Spinner';
@@ -342,4 +342,3 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
 };
 
 export default SignInPanel;
-
