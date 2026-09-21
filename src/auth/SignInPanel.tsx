@@ -76,8 +76,9 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
     setError(null);
     try {
       const userCredential = await signInWithPopup(auth, googleProvider);
-      const idToken = await userCredential.user.getIdToken();
-      await authApi.signInWithGoogle(idToken);
+      const oauthCredential = GoogleAuthProvider.credentialFromResult(userCredential);
+      const tokenToSend = oauthCredential?.idToken || (await userCredential.user.getIdToken());
+      await authApi.signInWithGoogle(tokenToSend);
       await refresh();
       onSignedIn();
     } catch (err: unknown) {
