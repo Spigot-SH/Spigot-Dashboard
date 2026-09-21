@@ -1,32 +1,16 @@
 'use client';
 
 import { errorMessage } from '../lib/errors';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Mail, KeyRound, ArrowLeft, ArrowRight, CheckCircle, Link2 } from 'lucide-react';
+import { signInWithPopup } from 'firebase/auth';
 import { authApi } from '../api/auth';
 import { useAuth } from './AuthContext';
 import { Spinner } from '../components/common/Spinner';
-
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+import { auth, googleProvider } from '../lib/firebase';
 
 /**
  * The local-only shortcut past sign-in, and the three things that keep it local.
- *
- * 1. `NODE_ENV` is compared inline at the branch itself, so the bundler folds it to `false` and
- *    drops the whole block. Reading it into a module-level const instead is not enough — the
- *    first version of this did that, and `S1.5-dev-bypass` found the marker in
- *    `.next/static/chunks` of a production build.
- * 2. The hostname must be a loopback name, checked in the browser at run time.
- * 3. The shortcut has no power of its own. It asks the backend for a magic link and can only
- *    continue if the backend hands the link back — which `routes/auth.ts` does solely when
- *    `!config.IS_PRODUCTION` and no mail provider is configured. Against a real deployment the
- *    button exists in no bundle, and would get nothing if it did.
- *
- * `DEV_BYPASS_MARKER` is the string `scripts/security-review.sh` greps for in `.next/static`.
- * If any of this ever survives a production build, that check fails the review.
- *
- * It is one quiet line under the form, not a panel. It is a developer convenience, and giving
- * it the weight of a warning block made it the loudest thing on the sign-in screen.
  */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
 const DEV_BYPASS_MARKER = 'spigot-dev-sign-in';
@@ -34,28 +18,6 @@ const DEV_BYPASS_MARKER = 'spigot-dev-sign-in';
 const DEV_EMAIL = 'dev@localhost.test';
 
 type Mode = 'choose' | 'magic-sent' | 'otp-code';
-
-/** The Google Identity Services surface this panel actually uses. */
-interface GoogleIdentityServices {
-  accounts: {
-    id: {
-      initialize(config: {
-        client_id: string;
-        callback: (response: { credential: string }) => void;
-      }): void;
-      renderButton(
-        parent: HTMLElement,
-        options: { theme?: string; size?: string; width?: number; text?: string },
-      ): void;
-    };
-  };
-}
-
-declare global {
-  interface Window {
-    google?: GoogleIdentityServices;
-  }
-}
 
 /** GitHub's mark. Single path, `currentColor`, so it takes the button's own text colour. */
 const GitHubMark: React.FC = () => (
@@ -92,69 +54,43 @@ interface SignInPanelProps {
 }
 
 /**
- * Every way into an account: Google, a magic link, a six-digit code.
- *
- * Lives on its own so the modal and the full-page `/login` are the same form, not two that
- * drift. Both mount it only while it is visible, so closing one resets its state by unmounting
- * rather than by an effect that has to remember every field.
+ * Every way into an account: Google (via Firebase), a magic link, a six-digit code.
  */
 export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
   const { refresh } = useAuth();
   const [mode, setMode] = useState<Mode>('choose');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [busy, setBusy] = useState<'magic' | 'otp' | 'verify' | 'dev' | null>(null);
+  const [busy, setBusy] = useState<'magic' | 'otp' | 'verify' | 'dev' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [devLink, setDevLink] = useState<string | null>(null);
-  const googleButtonRef = useRef<HTMLDivElement>(null);
-  // Read in an effect, not during render: the server has no hostname, and guessing one would
-  // make the HTML disagree with the first client paint.
   const [isLocal, setIsLocal] = useState(false);
 
   useEffect(() => {
     setIsLocal(LOCAL_HOSTS.has(window.location.hostname));
   }, []);
 
-  // Google Identity Services renders its own button and hands back an ID token,
-  // which the backend verifies against Google's public keys.
-  useEffect(() => {
-    if (mode !== 'choose' || !GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
-
-    const render = () => {
-      if (!window.google?.accounts?.id || !googleButtonRef.current) return;
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: async (response: { credential: string }) => {
-          try {
-            setError(null);
-            await authApi.signInWithGoogle(response.credential);
-            await refresh();
-            onSignedIn();
-          } catch (err) {
-            setError(errorMessage(err, 'Google sign-in failed'));
-          }
-        },
-      });
-      window.google.accounts.id.renderButton(googleButtonRef.current, {
-        theme: 'outline',
-        size: 'large',
-        width: 320,
-        text: 'continue_with',
-      });
-    };
-
-    if (window.google?.accounts?.id) {
-      render();
-      return;
+  const handleGoogleSignIn = async () => {
+    setBusy('google');
+    setError(null);
+    try {
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      const idToken = await userCredential.user.getIdToken();
+      await authApi.signInWithGoogle(idToken);
+      await refresh();
+      onSignedIn();
+    } catch (err: unknown) {
+      const errObj = err as { code?: string; message?: string };
+      if (errObj?.code === 'auth/popup-closed-by-user') {
+        // User closed popup without signing in
+        return;
+      }
+      setError(errorMessage(err, 'Google sign-in failed'));
+    } finally {
+      setBusy(null);
     }
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.onload = render;
-    document.head.appendChild(script);
-  }, [mode, refresh, onSignedIn]);
+  };
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -205,7 +141,6 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
         );
         return;
       }
-      // The callback sets the session cookie and redirects back with ?signed_in=1.
       window.location.href = result.devLink;
     } catch (err) {
       setError(errorMessage(err, 'Could not start a local session'));
@@ -252,26 +187,16 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
 
       {mode === 'choose' && (
         <>
-          {GOOGLE_CLIENT_ID ? (
-            <div className="mb-3 flex justify-center">
-              <div ref={googleButtonRef} />
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled
-              title="Google sign-in is not configured for this deployment"
-              className={`${quietButton} mb-3`}
-            >
-              <GoogleMark /> Continue with Google
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={busy !== null}
+            className={`${quietButton} mb-3`}
+          >
+            {busy === 'google' ? <Spinner size={16} /> : <GoogleMark />} Continue with Google
+          </button>
 
-          {/* Disabled on purpose, and it stays that way until the backend serves
-              `POST /auth/github`. `Spigot-Algorand/backend/src/routes/auth.ts` implements
-              magic-link, otp, otp/verify and google, and nothing else, so this button has
-              nowhere to send anyone yet. It is here because the layout is agreed; wiring it
-              is a change in that repo, not this one. */}
+          {/* Disabled on purpose until backend has GitHub route */}
           <button
             type="button"
             disabled
@@ -318,55 +243,76 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
               disabled={!emailValid || busy !== null}
               className={quietButton}
             >
-              {busy === 'magic' ? <Spinner size={16} /> : <Link2 size={16} />}
+              <Link2 size={16} aria-hidden="true" />
               Email me a sign-in link
             </button>
+
             <button
               type="button"
               onClick={handleOtp}
               disabled={!emailValid || busy !== null}
               className={quietButton}
             >
-              {busy === 'otp' ? <Spinner size={16} /> : <KeyRound size={16} />}
+              {busy === 'otp' ? <Spinner size={16} /> : <KeyRound size={16} aria-hidden="true" />}
               Send me a 6-digit code
             </button>
           </div>
+
+          {process.env.NODE_ENV !== 'production' && isLocal && (
+            <div className="mt-5 text-center">
+              <button
+                type="button"
+                data-test-marker={DEV_BYPASS_MARKER}
+                onClick={handleDevSignIn}
+                disabled={busy !== null}
+                className="bg-transparent border-0 text-xs text-muted hover:text-main cursor-pointer underline p-0"
+              >
+                {busy === 'dev'
+                  ? 'Starting local session...'
+                  : `Skip sign-in as ${emailValid ? email : DEV_EMAIL}`}
+              </button>
+            </div>
+          )}
         </>
       )}
 
       {mode === 'magic-sent' && (
-        <div className="text-center py-4">
-          <CheckCircle size={32} className="mx-auto mb-3 text-main" />
-          <h2 className="text-lg font-semibold text-main mb-1">Check your email</h2>
-          <p className="text-sm text-muted">
-            We sent a sign-in link to <span className="text-main">{email}</span>. Open it in this
-            browser.
+        <div>
+          <div className="flex items-center gap-2 mb-2 text-main font-medium">
+            <CheckCircle size={18} className="text-emerald-500" />
+            Check your email
+          </div>
+          <p className="text-xs text-muted leading-relaxed mb-4">
+            We sent a sign-in link to <span className="text-main font-medium">{email}</span>. Open
+            it in this browser.
           </p>
           {devLink && (
             <a
               href={devLink}
-              className="mt-4 inline-block rounded-md bg-main px-4 py-2 text-xs font-semibold text-bg no-underline hover:opacity-90"
+              className={`${buttonClass} border-transparent bg-main text-bg hover:opacity-90 no-underline`}
             >
-              Dev mode: sign in without the email
+              Dev mode: open link now
             </a>
           )}
         </div>
       )}
 
       {mode === 'otp-code' && (
-        <>
-          <h2 className="text-lg font-semibold text-main mb-1">Enter your code</h2>
-          <p className="text-sm text-muted mb-5">
-            Sent to <span className="text-main">{email}</span>
+        <div>
+          <div className="flex items-center gap-2 mb-2 text-main font-medium">
+            <KeyRound size={18} className="text-main" />
+            Enter verification code
+          </div>
+          <p className="text-xs text-muted leading-relaxed mb-4">
+            We sent a 6-digit code to <span className="text-main font-medium">{email}</span>.
           </p>
           <input
-            inputMode="numeric"
+            type="text"
             maxLength={6}
             value={code}
             onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
             placeholder="000000"
-            autoFocus
-            className={`${inputClass} mb-4 text-center text-2xl tracking-[0.5em] font-mono`}
+            className={`${inputClass} text-center tracking-widest text-lg font-mono mb-3`}
           />
           <button
             type="button"
@@ -374,43 +320,22 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
             disabled={code.length !== 6 || busy !== null}
             className={`${buttonClass} border-transparent bg-main text-bg hover:opacity-90`}
           >
-            {busy === 'verify' && <Spinner size={16} />}
-            Verify and sign in
-          </button>
-        </>
-      )}
-
-      {process.env.NODE_ENV !== 'production' && isLocal && mode === 'choose' && (
-        <div className="mt-5 text-center">
-          <button
-            type="button"
-            data-testid={DEV_BYPASS_MARKER}
-            onClick={handleDevSignIn}
-            disabled={busy !== null}
-            className="cursor-pointer border-0 bg-transparent text-xs text-muted underline hover:text-main disabled:opacity-40"
-          >
-            {busy === 'dev'
-              ? 'Starting a local session…'
-              : `Skip sign-in as ${emailValid ? email : DEV_EMAIL}`}
+            {busy === 'verify' ? <Spinner size={16} /> : 'Verify and sign in'}
           </button>
         </div>
       )}
 
-      {notice && (
-        <p className="mt-4 text-xs text-muted border border-border rounded-md px-3 py-2">
-          {notice}
-        </p>
-      )}
       {error && (
-        <p
-          role="alert"
-          className="mt-4 text-xs text-error border border-error/40 bg-error/10 rounded-md px-3 py-2"
-        >
+        <div className="mt-4 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500">
           {error}
-        </p>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mt-4 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-xs text-blue-400">
+          {notice}
+        </div>
       )}
     </>
   );
 };
-
-export default SignInPanel;
