@@ -129,4 +129,10 @@ export const creditsApi = {
         ...(chain ? { chain } : {}),
       }),
     }),
+
+  unlockTutorial: () =>
+    request<{ success: boolean; balance: number; unlocked?: boolean; alreadyUnlocked?: boolean }>(
+      '/credits/unlock-tutorial',
+      { method: 'POST' },
+    ),
 };

@@ -26,6 +26,10 @@ import { AnalyticsView } from '../components/dashboard/AnalyticsView';
 import { SettingsView } from '../components/dashboard/SettingsView';
 import { CallerView } from '../components/dashboard/CallerView';
 import { ConsoleCover, CONSOLE_COVERS } from '../components/dashboard/ConsoleCover';
+import { McpOnboardingBanner } from '../components/dashboard/McpOnboardingBanner';
+import { McpTutorialModal } from '../components/dashboard/McpTutorialModal';
+import { TutorialLockedCard } from '../components/dashboard/TutorialLockedCard';
+import { creditsApi } from '../api/credits';
 import { useAuth } from '../auth/AuthContext';
 import { consoleFallback, useConsoleView } from '../lib/consoleView';
 import { Logo } from '../components/common/Logo';
@@ -74,6 +78,60 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   // The switch is in the header now, so the answer lives outside this component, and the
   // fallback is derived in one place so the two cannot disagree on the first paint.
   const { view } = useConsoleView(consoleFallback(user?.profile?.intent));
+
+  // Blocking tutorial & unlock state: user cannot access full dashboard until unlocked & tutorial completed
+  const [tutorialUnlocked, setTutorialUnlocked] = useState<boolean>(true);
+  const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(true);
+  const [showTutorialModal, setShowTutorialModal] = useState<boolean>(false);
+  const [isUnlocking, setIsUnlocking] = useState<boolean>(false);
+  const [checkedTutorial, setCheckedTutorial] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      const unlocked = localStorage.getItem('spigot_mcp_unlocked') === 'true';
+      const completed = localStorage.getItem('spigot_mcp_tutorial_completed') === 'true';
+      setTutorialUnlocked(unlocked);
+      setTutorialCompleted(completed);
+      // Auto-show modal if unlocked but not yet completed
+      if (unlocked && !completed) {
+        setShowTutorialModal(true);
+      }
+    } catch {
+      // Ignore localStorage errors
+    } finally {
+      setCheckedTutorial(true);
+    }
+  }, []);
+
+  const handleUnlockTutorial = async () => {
+    setIsUnlocking(true);
+    try {
+      try {
+        await creditsApi.unlockTutorial();
+      } catch (err: unknown) {
+        console.warn('Backend unlock completed or fell back:', err);
+      }
+      try {
+        localStorage.setItem('spigot_mcp_unlocked', 'true');
+      } catch {}
+      setTutorialUnlocked(true);
+      setShowTutorialModal(true);
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const handleTutorialComplete = () => {
+    try {
+      localStorage.setItem('spigot_mcp_unlocked', 'true');
+      localStorage.setItem('spigot_mcp_tutorial_completed', 'true');
+    } catch {}
+    setTutorialUnlocked(true);
+    setTutorialCompleted(true);
+    setShowTutorialModal(false);
+  };
+
+  const isDashboardBlocked = checkedTutorial && (!tutorialUnlocked || !tutorialCompleted);
 
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;
@@ -157,96 +215,151 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
 
   if (view === 'caller') {
     return (
-      <div className="flex">
-        <Sidebar publisherId={effectivePublisherId} view="caller" />
-        <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
-          <div className="mx-auto max-w-[1400px]">
-            {/* The caller console used to render `CallerView` for every section, so the
-                settings page existed but nothing in this view could reach it. */}
-            {activeSection === 'settings' ? (
-              <SettingsView publisherId={effectivePublisherId} />
-            ) : (
-              <CallerView />
-            )}
+      <>
+        <McpTutorialModal
+          isOpen={showTutorialModal}
+          onComplete={handleTutorialComplete}
+          canClose={tutorialUnlocked && tutorialCompleted}
+          onClose={() => setShowTutorialModal(false)}
+        />
+        <div className="flex">
+          <div className={isDashboardBlocked ? 'pointer-events-none opacity-50 select-none' : ''}>
+            <Sidebar publisherId={effectivePublisherId} view="caller" />
+          </div>
+          <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+            <div className="mx-auto max-w-[1400px]">
+              {/* The caller console used to render `CallerView` for every section, so the
+                  settings page existed but nothing in this view could reach it. */}
+              {activeSection === 'settings' ? (
+                <SettingsView publisherId={effectivePublisherId} />
+              ) : (
+                <CallerView
+                  isUnlocked={tutorialUnlocked}
+                  isCompleted={tutorialCompleted}
+                  onOpenTutorial={() => setShowTutorialModal(true)}
+                  onUnlockTutorial={handleUnlockTutorial}
+                  isUnlocking={isUnlocking}
+                />
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (loading || !stats) {
     return (
-      <div className="flex">
-        <Sidebar publisherId={publisherId || 'active'} />
-        <div className="flex-1 flex items-center justify-center min-h-[calc(100vh-64px)]">
-          <div className="flex flex-col items-center text-muted">
-            <Activity className="mb-4 text-accent" size={48} />
-            <p className="text-lg">Loading Dashboard...</p>
+      <>
+        <McpTutorialModal
+          isOpen={showTutorialModal}
+          onComplete={handleTutorialComplete}
+          canClose={tutorialUnlocked && tutorialCompleted}
+          onClose={() => setShowTutorialModal(false)}
+        />
+        <div className="flex">
+          <Sidebar publisherId={publisherId || 'active'} />
+          <div className="flex-1 flex items-center justify-center min-h-[calc(100vh-64px)]">
+            <div className="flex flex-col items-center text-muted">
+              <Activity className="mb-4 text-accent" size={48} />
+              <p className="text-lg">Loading Dashboard...</p>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="flex">
-      <Sidebar publisherId={effectivePublisherId} />
+    <>
+      <McpTutorialModal
+        isOpen={showTutorialModal}
+        onComplete={handleTutorialComplete}
+        canClose={tutorialUnlocked && tutorialCompleted}
+        onClose={() => setShowTutorialModal(false)}
+      />
+      <div className="flex">
+        <div className={isDashboardBlocked ? 'pointer-events-none opacity-50 select-none' : ''}>
+          <Sidebar publisherId={effectivePublisherId} />
+        </div>
 
-      <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
-        <div className="max-w-[1400px] mx-auto">
-          {needsAccount && (
-            <EmptyState
-              icon={<Logo size={56} className="text-accent" />}
-              title="No publisher account yet"
-              description="Your publisher console starts once you create one. It takes one click. Only calling APIs? Switch to Use APIs above."
-              action={
-                <Button variant="primary" onClick={() => router.push('/start')}>
-                  Set up as a provider
-                </Button>
-              }
-            />
-          )}
-
-          {loadError && !needsAccount && (
-            <EmptyState
-              title="Could not load your dashboard"
-              description={`${loadError} No figures are shown, because none loaded.`}
-              action={
-                <Button variant="primary" size="sm" onClick={() => setRefreshKey(k => k + 1)}>
-                  Try again
-                </Button>
-              }
-            />
-          )}
-
-          {/* Render Active Section */}
-          {showFigures && activeSection === 'apis' && (
-            <ApisView stats={stats} publisherId={effectivePublisherId} />
-          )}
-
-          {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
-
-          {/* Not behind `showFigures`: settings reads no dashboard figures, and a failed
-              stats request used to take the API key and the payout address down with it. */}
-          {activeSection === 'settings' && <SettingsView publisherId={effectivePublisherId} />}
-
-          {showFigures && activeSection === 'overview' && (
-            <>
-              <ConsoleCover
-                src={CONSOLE_COVERS.provider}
-                title="Your APIs"
-                subtitle={
-                  stats.health.status
-                    ? `What your endpoints have earned and served. Last health check: ${stats.health.status}.`
-                    : 'What your endpoints have earned and served. No health check has run yet.'
+        <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+          <div className="max-w-[1400px] mx-auto">
+            {needsAccount && (
+              <EmptyState
+                icon={<Logo size={56} className="text-accent" />}
+                title="No publisher account yet"
+                description="Your publisher console starts once you create one. It takes one click. Only calling APIs? Switch to Use APIs above."
+                action={
+                  <Button variant="primary" onClick={() => router.push('/start')}>
+                    Set up as a provider
+                  </Button>
                 }
               />
+            )}
 
-              <SettlePanel
-                publisherId={effectivePublisherId}
-                available={stats.availableBalance ?? 0}
-                onSettled={() => setRefreshKey(k => k + 1)}
+            {loadError && !needsAccount && (
+              <EmptyState
+                title="Could not load your dashboard"
+                description={`${loadError} No figures are shown, because none loaded.`}
+                action={
+                  <Button variant="primary" size="sm" onClick={() => setRefreshKey(k => k + 1)}>
+                    Try again
+                  </Button>
+                }
               />
+            )}
+
+            {/* Render Active Section */}
+            {showFigures && activeSection === 'apis' && (
+              <ApisView stats={stats} publisherId={effectivePublisherId} />
+            )}
+
+            {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
+
+            {/* Not behind `showFigures`: settings reads no dashboard figures, and a failed
+                stats request used to take the API key and the payout address down with it. */}
+            {activeSection === 'settings' && <SettingsView publisherId={effectivePublisherId} />}
+
+            {showFigures && activeSection === 'overview' && (
+              <>
+                <ConsoleCover
+                  src={CONSOLE_COVERS.provider}
+                  title="Your APIs"
+                  subtitle={
+                    stats.health.status
+                      ? `What your endpoints have earned and served. Last health check: ${stats.health.status}.`
+                      : 'What your endpoints have earned and served. No health check has run yet.'
+                  }
+                />
+
+                {!tutorialUnlocked || !tutorialCompleted ? (
+                  <TutorialLockedCard
+                    balance={stats.availableBalance ?? 0}
+                    onAddCredit={() => router.push('/profile')}
+                    onUnlock={handleUnlockTutorial}
+                    isUnlocking={isUnlocking}
+                    className="mb-8"
+                  />
+                ) : (
+                  <McpOnboardingBanner
+                    className="mb-8"
+                    onOpenTutorial={() => setShowTutorialModal(true)}
+                  />
+                )}
+
+                <div
+                  className={`transition-all duration-300 ${
+                    isDashboardBlocked
+                      ? 'pointer-events-none select-none filter blur-[2px] opacity-40'
+                      : ''
+                  }`}
+                >
+                  <SettlePanel
+                    publisherId={effectivePublisherId}
+                    available={stats.availableBalance ?? 0}
+                    onSettled={() => setRefreshKey(k => k + 1)}
+                  />
 
               {/* Top Stat Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -473,12 +586,14 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                   </Card>
                 </div>
               </div>
-            </>
-          )}
+            </div>
+          </>
+        )}
         </div>
       </div>
     </div>
-  );
+  </>
+);
 };
 
 export default Dashboard;

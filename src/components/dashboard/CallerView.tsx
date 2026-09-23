@@ -10,6 +10,8 @@ import { creditsApi, type CreditsOverview } from '../../api/credits';
 import { errorMessage } from '../../lib/errors';
 import { CreditCard, Wallet } from 'lucide-react';
 import { ConsoleCover, CONSOLE_COVERS } from './ConsoleCover';
+import { McpOnboardingBanner } from './McpOnboardingBanner';
+import { TutorialLockedCard } from './TutorialLockedCard';
 import { AddCreditModal } from '../../credits/TopUpPanel';
 import { formatCredit } from '../../lib/format';
 
@@ -27,7 +29,21 @@ const KIND_LABEL: Record<string, string> = {
  * and counts and sums over the history it sent. Nothing is defaulted: a failed load shows the
  * failure and no figures, the same rule the publisher overview follows.
  */
-export const CallerView: React.FC = () => {
+interface CallerViewProps {
+  isUnlocked?: boolean;
+  isCompleted?: boolean;
+  onOpenTutorial?: () => void;
+  onUnlockTutorial?: () => Promise<void>;
+  isUnlocking?: boolean;
+}
+
+export const CallerView: React.FC<CallerViewProps> = ({
+  isUnlocked = true,
+  isCompleted = true,
+  onOpenTutorial,
+  onUnlockTutorial,
+  isUnlocking = false,
+}) => {
   const [overview, setOverview] = useState<CreditsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -51,6 +67,13 @@ export const CallerView: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load, attempt]);
+
+  const handleUnlock = async () => {
+    if (onUnlockTutorial) {
+      await onUnlockTutorial();
+    }
+    await load();
+  };
 
   if (loadError) {
     return (
@@ -96,79 +119,99 @@ export const CallerView: React.FC = () => {
         onCredited={load}
       />
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-        <Card hoverable className="relative overflow-hidden">
-          <div className="absolute right-0 top-0 p-4 text-accent opacity-10">
-            <CreditCard size={64} />
-          </div>
-          <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
-            Credit available
-          </h3>
-          <div className="text-3xl">{loading ? '' : formatCredit(overview?.balance ?? 0)}</div>
-        </Card>
+      {!isUnlocked || !isCompleted ? (
+        <TutorialLockedCard
+          balance={overview?.balance ?? 0}
+          onAddCredit={() => setAddingCredit(true)}
+          onUnlock={handleUnlock}
+          isUnlocking={isUnlocking}
+        />
+      ) : (
+        <McpOnboardingBanner onOpenTutorial={onOpenTutorial} />
+      )}
 
-        <Card hoverable>
-          <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
-            Paid calls recorded
-          </h3>
-          <div className="font-mono text-3xl">{loading ? '' : spends.length.toLocaleString()}</div>
-          <div className="mt-1 text-xs text-muted">In the activity below</div>
-        </Card>
+      {/* Dashboard metrics and activity: disabled & blurred if tutorial is not yet unlocked and completed */}
+      <div
+        className={`flex flex-col gap-8 transition-all duration-300 ${
+          !isUnlocked || !isCompleted
+            ? 'pointer-events-none select-none filter blur-[2px] opacity-40'
+            : ''
+        }`}
+      >
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <Card hoverable className="relative overflow-hidden">
+            <div className="absolute right-0 top-0 p-4 text-accent opacity-10">
+              <CreditCard size={64} />
+            </div>
+            <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
+              Credit available
+            </h3>
+            <div className="text-3xl">{loading ? '' : formatCredit(overview?.balance ?? 0)}</div>
+          </Card>
 
-        <Card hoverable>
-          <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
-            Spent on calls
-          </h3>
-          <div className="text-3xl">{loading ? '' : formatCredit(spent)}</div>
-          <div className="mt-1 text-xs text-muted">Sum of the calls below</div>
+          <Card hoverable>
+            <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
+              Paid calls recorded
+            </h3>
+            <div className="font-mono text-3xl">{loading ? '' : spends.length.toLocaleString()}</div>
+            <div className="mt-1 text-xs text-muted">In the activity below</div>
+          </Card>
+
+          <Card hoverable>
+            <h3 className="mb-2 text-sm font-normal uppercase tracking-wider text-muted">
+              Spent on calls
+            </h3>
+            <div className="text-3xl">{loading ? '' : formatCredit(spent)}</div>
+            <div className="mt-1 text-xs text-muted">Sum of the calls below</div>
+          </Card>
+        </div>
+
+        <Card header="Activity" padding="none">
+          <Table>
+            <thead>
+              <tr>
+                <Th>What</Th>
+                <Th>When</Th>
+                <Th numeric>Amount</Th>
+                <Th numeric>Balance after</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <SkeletonRows cols={4} rows={4} />
+              ) : history.length > 0 ? (
+                history.map(entry => (
+                  <tr key={entry.id}>
+                    <Td>{entry.description || KIND_LABEL[entry.kind] || entry.kind}</Td>
+                    <Td>{new Date(entry.created_at).toLocaleString()}</Td>
+                    <Td numeric className={entry.amount >= 0 ? 'text-accent font-medium' : ''}>
+                      {entry.amount >= 0 ? '+' : '-'}
+                      {formatCredit(Math.abs(entry.amount))}
+                    </Td>
+                    <Td numeric mono>
+                      {formatCredit(entry.balance_after)}
+                    </Td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <TdEmpty colSpan={4}>
+                    <div className="py-6 text-center">
+                      <p className="mb-2">No calls yet</p>
+                      {/* There is no listing in this repo to link to. Saying where an API link
+                          comes from is honest; a button to a page that 404s is not. */}
+                      <p className="text-xs text-muted">
+                        Open an API&apos;s link to make your first call. Each one is metered per
+                        request and paid from the credit above.
+                      </p>
+                    </div>
+                  </TdEmpty>
+                </tr>
+              )}
+            </tbody>
+          </Table>
         </Card>
       </div>
-
-      <Card header="Activity" padding="none">
-        <Table>
-          <thead>
-            <tr>
-              <Th>What</Th>
-              <Th>When</Th>
-              <Th numeric>Amount</Th>
-              <Th numeric>Balance after</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <SkeletonRows cols={4} rows={4} />
-            ) : history.length > 0 ? (
-              history.map(entry => (
-                <tr key={entry.id}>
-                  <Td>{entry.description || KIND_LABEL[entry.kind] || entry.kind}</Td>
-                  <Td>{new Date(entry.created_at).toLocaleString()}</Td>
-                  <Td numeric className={entry.amount >= 0 ? 'text-accent font-medium' : ''}>
-                    {entry.amount >= 0 ? '+' : '-'}
-                    {formatCredit(Math.abs(entry.amount))}
-                  </Td>
-                  <Td numeric mono>
-                    {formatCredit(entry.balance_after)}
-                  </Td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <TdEmpty colSpan={4}>
-                  <div className="py-6 text-center">
-                    <p className="mb-2">No calls yet</p>
-                    {/* There is no listing in this repo to link to. Saying where an API link
-                        comes from is honest; a button to a page that 404s is not. */}
-                    <p className="text-xs text-muted">
-                      Open an API&apos;s link to make your first call. Each one is metered per
-                      request and paid from the credit above.
-                    </p>
-                  </div>
-                </TdEmpty>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-      </Card>
     </div>
   );
 };
