@@ -11,6 +11,7 @@ import {
   Wallet,
   BookOpen,
   LifeBuoy,
+  Compass,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,10 +32,18 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
     exact: true,
   };
 
+  const exploreApis = {
+    name: 'Explore APIs',
+    path: `/dashboard/${publisherId}/explore`,
+    icon: Compass,
+    exact: false,
+  };
+
   const navItems =
     view === 'caller'
       ? [
           overview,
+          exploreApis,
           { name: 'Account & credit', path: '/profile', icon: Wallet, exact: true },
           {
             name: 'Settings',
@@ -46,6 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
       : [
           overview,
           { name: 'APIs', path: `/dashboard/${publisherId}/apis`, icon: Server, exact: false },
+          exploreApis,
           {
             name: 'Analytics',
             path: `/dashboard/${publisherId}/analytics`,

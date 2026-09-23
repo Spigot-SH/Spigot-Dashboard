@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { EmptyState } from '../common/EmptyState';
@@ -8,7 +9,7 @@ import { Table, Th, Td, TdEmpty } from '../common/Table';
 import { SkeletonRows } from '../common/Skeleton';
 import { creditsApi, type CreditsOverview } from '../../api/credits';
 import { errorMessage } from '../../lib/errors';
-import { CreditCard, Wallet } from 'lucide-react';
+import { CreditCard, Wallet, Compass } from 'lucide-react';
 import { ConsoleCover, CONSOLE_COVERS } from './ConsoleCover';
 import { McpOnboardingBanner } from './McpOnboardingBanner';
 import { TutorialLockedCard } from './TutorialLockedCard';
@@ -30,6 +31,7 @@ const KIND_LABEL: Record<string, string> = {
  * failure and no figures, the same rule the publisher overview follows.
  */
 interface CallerViewProps {
+  publisherId?: string;
   isUnlocked?: boolean;
   isCompleted?: boolean;
   onOpenTutorial?: () => void;
@@ -38,12 +40,14 @@ interface CallerViewProps {
 }
 
 export const CallerView: React.FC<CallerViewProps> = ({
+  publisherId,
   isUnlocked = true,
   isCompleted = true,
   onOpenTutorial,
   onUnlockTutorial,
   isUnlocking = false,
 }) => {
+  const router = useRouter();
   const [overview, setOverview] = useState<CreditsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -100,9 +104,22 @@ export const CallerView: React.FC<CallerViewProps> = ({
         title="Your calls"
         subtitle="Credit you have, and every call it has paid for. Calls are metered per request."
         action={
-          <Button variant="primary" size="sm" onClick={() => setAddingCredit(true)}>
-            <Wallet size={15} className="mr-1.5" /> Add credit
-          </Button>
+          <div className="flex items-center gap-2.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                router.push(
+                  publisherId ? `/dashboard/${publisherId}/explore` : '/dashboard/active/explore',
+                )
+              }
+            >
+              <Compass size={15} className="mr-1.5" /> Explore APIs
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setAddingCredit(true)}>
+              <Wallet size={15} className="mr-1.5" /> Add credit
+            </Button>
+          </div>
         }
       />
 
@@ -196,14 +213,24 @@ export const CallerView: React.FC<CallerViewProps> = ({
               ) : (
                 <tr>
                   <TdEmpty colSpan={4}>
-                    <div className="py-6 text-center">
-                      <p className="mb-2">No calls yet</p>
-                      {/* There is no listing in this repo to link to. Saying where an API link
-                          comes from is honest; a button to a page that 404s is not. */}
-                      <p className="text-xs text-muted">
-                        Open an API&apos;s link to make your first call. Each one is metered per
-                        request and paid from the credit above.
+                    <div className="py-8 flex flex-col items-center justify-center">
+                      <p className="mb-1 text-sm font-medium text-main">No calls recorded yet</p>
+                      <p className="text-xs text-muted max-w-sm text-center mb-4">
+                        Discover published APIs in the marketplace and test endpoints live with your USDC credit balance.
                       </p>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() =>
+                          router.push(
+                            publisherId
+                              ? `/dashboard/${publisherId}/explore`
+                              : '/dashboard/active/explore',
+                          )
+                        }
+                      >
+                        <Compass size={14} className="mr-1.5" /> Explore & Test APIs
+                      </Button>
                     </div>
                   </TdEmpty>
                 </tr>

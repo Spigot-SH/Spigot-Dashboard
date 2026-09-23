@@ -24,6 +24,7 @@ import SettlePanel from '../components/dashboard/SettlePanel';
 import { ApisView } from '../components/dashboard/ApisView';
 import { AnalyticsView } from '../components/dashboard/AnalyticsView';
 import { SettingsView } from '../components/dashboard/SettingsView';
+import { ExploreApisView } from '../components/dashboard/ExploreApisView';
 import { CallerView } from '../components/dashboard/CallerView';
 import { ConsoleCover, CONSOLE_COVERS } from '../components/dashboard/ConsoleCover';
 import { McpOnboardingBanner } from '../components/dashboard/McpOnboardingBanner';
@@ -136,6 +137,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;
     if (pathname?.endsWith('/apis')) return 'apis';
+    if (pathname?.endsWith('/explore')) return 'explore';
     if (pathname?.endsWith('/analytics')) return 'analytics';
     if (pathname?.endsWith('/settings')) return 'settings';
     return 'overview';
@@ -232,8 +234,11 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                   settings page existed but nothing in this view could reach it. */}
               {activeSection === 'settings' ? (
                 <SettingsView publisherId={effectivePublisherId} />
+              ) : activeSection === 'explore' ? (
+                <ExploreApisView publisherId={effectivePublisherId} />
               ) : (
                 <CallerView
+                  publisherId={effectivePublisherId}
                   isUnlocked={tutorialUnlocked}
                   isCompleted={tutorialCompleted}
                   onOpenTutorial={() => setShowTutorialModal(true)}
@@ -311,6 +316,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
             )}
 
             {/* Render Active Section */}
+            {activeSection === 'explore' && (
+              <ExploreApisView publisherId={effectivePublisherId} />
+            )}
+
             {showFigures && activeSection === 'apis' && (
               <ApisView stats={stats} publisherId={effectivePublisherId} />
             )}
