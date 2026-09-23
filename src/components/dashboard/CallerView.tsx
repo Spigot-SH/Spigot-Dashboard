@@ -15,6 +15,7 @@ import { McpOnboardingBanner } from './McpOnboardingBanner';
 import { TutorialLockedCard } from './TutorialLockedCard';
 import { AddCreditModal } from '../../credits/TopUpPanel';
 import { formatCredit } from '../../lib/format';
+import { useAuth } from '../../auth/AuthContext';
 
 const KIND_LABEL: Record<string, string> = {
   RECHARGE: 'Top-up',
@@ -48,6 +49,7 @@ export const CallerView: React.FC<CallerViewProps> = ({
   isUnlocking = false,
 }) => {
   const router = useRouter();
+  const { credits } = useAuth();
   const [overview, setOverview] = useState<CreditsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -138,7 +140,7 @@ export const CallerView: React.FC<CallerViewProps> = ({
 
       {!isUnlocked || !isCompleted ? (
         <TutorialLockedCard
-          balance={overview?.balance ?? 0}
+          balance={overview?.balance ?? credits ?? 0}
           onAddCredit={() => setAddingCredit(true)}
           onUnlock={handleUnlock}
           isUnlocking={isUnlocking}

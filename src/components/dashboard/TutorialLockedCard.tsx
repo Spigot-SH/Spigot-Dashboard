@@ -5,11 +5,12 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Logo } from '../common/Logo';
 import { ClaudeLogo } from '../common/ClaudeLogo';
+import { useAuth } from '../../auth/AuthContext';
 import { formatCredit } from '../../lib/format';
 import { Lock, Wallet, ArrowRight, Sparkles } from 'lucide-react';
 
 interface TutorialLockedCardProps {
-  balance: number;
+  balance?: number;
   onAddCredit: () => void;
   onUnlock: () => void;
   isUnlocking?: boolean;
@@ -17,12 +18,14 @@ interface TutorialLockedCardProps {
 }
 
 export const TutorialLockedCard: React.FC<TutorialLockedCardProps> = ({
-  balance,
+  balance: balanceProp,
   onAddCredit,
   onUnlock,
   isUnlocking = false,
   className = '',
 }) => {
+  const { credits } = useAuth();
+  const balance = balanceProp !== undefined ? balanceProp : (credits ?? 0);
   const UNLOCK_COST = 1.5;
   const hasEnoughCredit = balance >= UNLOCK_COST;
 

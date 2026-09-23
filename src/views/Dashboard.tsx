@@ -70,7 +70,7 @@ function settlementStatus(status: unknown): 'PUBLISHED' | 'PENDING' | 'OFFLINE' 
 const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, publisher } = useAuth();
+  const { user, publisher, credits, refresh } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -117,6 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
       } catch {}
       setTutorialUnlocked(true);
       setShowTutorialModal(true);
+      void refresh();
     } finally {
       setIsUnlocking(false);
     }
@@ -344,7 +345,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
 
                 {!tutorialUnlocked || !tutorialCompleted ? (
                   <TutorialLockedCard
-                    balance={stats.availableBalance ?? 0}
+                    balance={credits ?? 0}
                     onAddCredit={() => router.push('/profile')}
                     onUnlock={handleUnlockTutorial}
                     isUnlocking={isUnlocking}
