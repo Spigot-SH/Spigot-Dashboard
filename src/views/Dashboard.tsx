@@ -71,7 +71,16 @@ function settlementStatus(status: unknown): 'PUBLISHED' | 'PENDING' | 'OFFLINE' 
 const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, publisher, credits, refresh } = useAuth();
+  const {
+    user,
+    publisher,
+    credits,
+    refresh,
+    // The server computes this from the credit ledger; a client-side flag cannot be trusted
+    // to gate the dashboard.
+    tutorialUnlocked,
+    loading: authLoading,
+  } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -81,13 +90,12 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   // fallback is derived in one place so the two cannot disagree on the first paint.
   const { view } = useConsoleView(consoleFallback(user?.profile?.intent));
 
-  // Blocking tutorial & unlock state: user cannot access full dashboard until unlocked & tutorial completed
-  const [tutorialUnlocked, setTutorialUnlocked] = useState<boolean>(true);
+  // Whether the user has walked through the tutorial modal. This is a display preference, not
+  // a security decision — the money-gated part (`tutorialUnlocked`) comes from the server above.
   const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(true);
   const [showTutorialModal, setShowTutorialModal] = useState<boolean>(false);
   const [tutorialConnector, setTutorialConnector] = useState<'claude' | 'opencode'>('opencode');
   const [isUnlocking, setIsUnlocking] = useState<boolean>(false);
-  const [checkedTutorial, setCheckedTutorial] = useState<boolean>(false);
 
   const openTutorial = useCallback((conn: 'claude' | 'opencode' = 'opencode') => {
     setTutorialConnector(conn);
@@ -96,20 +104,18 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
 
   useEffect(() => {
     try {
-      const unlocked = localStorage.getItem('spigot_mcp_unlocked') === 'true';
-      const completed = localStorage.getItem('spigot_mcp_tutorial_completed') === 'true';
-      setTutorialUnlocked(unlocked);
-      setTutorialCompleted(completed);
-      // Auto-show modal if unlocked but not yet completed
-      if (unlocked && !completed) {
-        setShowTutorialModal(true);
-      }
+      setTutorialCompleted(localStorage.getItem('spigot_mcp_tutorial_completed') === 'true');
     } catch {
       // Ignore localStorage errors
-    } finally {
-      setCheckedTutorial(true);
     }
   }, []);
+
+  // Auto-show the modal once the server confirms the unlock, if it has not been completed yet.
+  useEffect(() => {
+    if (!authLoading && tutorialUnlocked && !tutorialCompleted) {
+      setShowTutorialModal(true);
+    }
+  }, [authLoading, tutorialUnlocked, tutorialCompleted]);
 
   const handleUnlockTutorial = async () => {
     setIsUnlocking(true);
@@ -119,14 +125,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
       } catch (err: unknown) {
         console.warn('Backend unlock completed or fell back:', err);
       }
-      try {
-        localStorage.setItem('spigot_mcp_unlocked', 'true');
-      } catch {
-        // Ignore localStorage error
-      }
-      setTutorialUnlocked(true);
+      // Re-fetch the session so `tutorialUnlocked` reflects what the ledger actually recorded,
+      // instead of assuming the debit above succeeded.
+      await refresh();
       setShowTutorialModal(true);
-      void refresh();
     } finally {
       setIsUnlocking(false);
     }
@@ -134,17 +136,15 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
 
   const handleTutorialComplete = () => {
     try {
-      localStorage.setItem('spigot_mcp_unlocked', 'true');
       localStorage.setItem('spigot_mcp_tutorial_completed', 'true');
     } catch {
       // Ignore localStorage error
     }
-    setTutorialUnlocked(true);
     setTutorialCompleted(true);
     setShowTutorialModal(false);
   };
 
-  const isDashboardBlocked = checkedTutorial && (!tutorialUnlocked || !tutorialCompleted);
+  const isDashboardBlocked = !authLoading && (!tutorialUnlocked || !tutorialCompleted);
 
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;

@@ -11,6 +11,8 @@ interface AuthContextValue {
   wallet: WalletInfo | null;
   evmWallet: WalletInfo | null;
   balances: Balances | null;
+  /** Server-computed from the credit ledger; the dashboard must not decide this itself. */
+  tutorialUnlocked: boolean;
   loading: boolean;
   signedIn: boolean;
   refresh: () => Promise<void>;
@@ -38,7 +40,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setState(await authApi.me());
     } catch {
-      setState({ user: null, credits: 0, wallet: null, evmWallet: null, balances: null });
+      setState({
+        user: null,
+        credits: 0,
+        wallet: null,
+        evmWallet: null,
+        balances: null,
+        tutorialUnlocked: false,
+      });
     } finally {
       setLoading(false);
     }
@@ -68,7 +77,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // publisher on its own. Leaving it behind hands the next person on this browser a working
     // credential, so it goes even if the logout request failed.
     clearAuth();
-    setState({ user: null, credits: 0, wallet: null, evmWallet: null, balances: null });
+    setState({
+      user: null,
+      credits: 0,
+      wallet: null,
+      evmWallet: null,
+      balances: null,
+      tutorialUnlocked: false,
+    });
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -79,6 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       wallet: state.wallet,
       evmWallet: state.evmWallet,
       balances: state.balances,
+      tutorialUnlocked: Boolean(state.tutorialUnlocked),
       loading,
       signedIn: Boolean(state.user),
       refresh,

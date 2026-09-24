@@ -61,6 +61,8 @@ export interface SessionState {
   wallet: WalletInfo | null;
   evmWallet: WalletInfo | null;
   balances: Balances | null;
+  /** Server-computed from the credit ledger. Missing when the backend predates this field. */
+  tutorialUnlocked?: boolean;
 }
 
 export interface PaymentReceipt {
