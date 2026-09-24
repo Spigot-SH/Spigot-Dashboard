@@ -105,17 +105,22 @@ const PRIMARY_NETWORKS: {
   disabledReason?: string;
 }[] = [
   { key: 'algorand', name: 'Algorand', logo: LOGO('algorand') },
-  { key: 'evm', name: 'Ethereum', logo: LOGO('ethereum') },
+  {
+    key: 'evm',
+    name: 'Ethereum',
+    logo: LOGO('ethereum'),
+    disabledReason: 'Disabled — Spigot currently operates exclusively on Algorand.',
+  },
   {
     key: 'solana',
     name: 'Solana',
     logo: LOGO('solana'),
-    disabledReason: 'Solana payments are not available yet. No wallet can sign one here.',
+    disabledReason: 'Disabled — Spigot currently operates exclusively on Algorand.',
   },
 ];
 
 /** Everything that is not a headline network. Selecting one switches the wallet step to it. */
-const OTHER_NETWORKS: { key: WalletKind; name: string }[] = [{ key: 'stellar', name: 'Stellar' }];
+const OTHER_NETWORKS: { key: WalletKind; name: string }[] = [];
 
 /** The mark if its file is there, nothing if it is not. Never a stand-in shape. */
 const BrandLogo: React.FC<{ src: string; size?: number }> = ({ src, size = 22 }) => {
@@ -920,7 +925,7 @@ export const AddCreditModal: React.FC<{
               <Choice
                 icon={<Wallet size={18} />}
                 title="Crypto wallet"
-                hint="A wallet you already hold, on Algorand, Ethereum and its L2s, or Stellar. Scan a code to use one on your phone."
+                hint="A wallet you already hold on Algorand. Scan a code to use Pera or Defly on your phone."
                 onClick={() => {
                   setError(null);
                   setStep('crypto');
@@ -1145,18 +1150,20 @@ export const AddCreditModal: React.FC<{
               </div>
 
               {/* The long tail. A network the caller rarely picks does not deserve a tile. */}
-              <Select
-                label="Other networks"
-                value={OTHER_NETWORKS.some(n => n.key === walletKind) ? walletKind : ''}
-                onChange={e => e.target.value && setWalletKind(e.target.value as WalletKind)}
-              >
-                <option value="">Choose a network</option>
-                {OTHER_NETWORKS.map(n => (
-                  <option key={n.key} value={n.key}>
-                    {n.name}
-                  </option>
-                ))}
-              </Select>
+              {OTHER_NETWORKS.length > 0 && (
+                <Select
+                  label="Other networks"
+                  value={OTHER_NETWORKS.some(n => n.key === walletKind) ? walletKind : ''}
+                  onChange={e => e.target.value && setWalletKind(e.target.value as WalletKind)}
+                >
+                  <option value="">Choose a network</option>
+                  {OTHER_NETWORKS.map(n => (
+                    <option key={n.key} value={n.key}>
+                      {n.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
 
               {walletKind === 'evm' && (
                 <Select label="Chain" value={evmChain} onChange={e => setEvmChain(e.target.value)}>

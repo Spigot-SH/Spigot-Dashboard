@@ -38,22 +38,10 @@ const Pricing: React.FC<PricingProps> = ({ data, updateData, onNext, onBack }) =
     const chain = data.settlementChain || 'Algorand';
     if (!data.settlementAddress) {
       newErrors.settlementAddress = 'Address is required';
-    } else if (chain === 'Algorand') {
-      if (data.settlementAddress.length !== 58) {
-        newErrors.settlementAddress = 'Algorand address must be exactly 58 characters';
-      }
-    } else if (chain === 'Solana') {
-      if (data.settlementAddress.length < 32 || data.settlementAddress.length > 44) {
-        newErrors.settlementAddress = 'Solana address must be between 32 and 44 characters';
-      }
-    } else if (chain === 'Stellar') {
-      if (!/^G[A-Z0-9]{55}$/.test(data.settlementAddress)) {
-        newErrors.settlementAddress = 'Stellar address must start with G and be 56 characters';
-      }
-    } else {
-      if (!/^0x[0-9a-fA-F]{40}$/.test(data.settlementAddress)) {
-        newErrors.settlementAddress = 'Must be a valid 42-character EVM address (e.g. 0x...)';
-      }
+    } else if (chain !== 'Algorand') {
+      newErrors.settlementAddress = 'Only Algorand settlement addresses are currently supported';
+    } else if (data.settlementAddress.length !== 58) {
+      newErrors.settlementAddress = 'Algorand address must be exactly 58 characters';
     }
 
     if (!data.minPayout) newErrors.minPayout = 'Minimum payout is required';
@@ -225,45 +213,22 @@ const Pricing: React.FC<PricingProps> = ({ data, updateData, onNext, onBack }) =
               <div className="col-span-2">
                 <Select
                   label="Settlement Chain"
-                  value={data.settlementChain || 'Algorand'}
+                  value="Algorand"
+                  disabled
                   onChange={handleChange('settlementChain')}
                 >
                   <option>Algorand</option>
-                  <option>Solana</option>
-                  <option>Stellar</option>
-                  <option>Ethereum</option>
-                  <option>Base</option>
-                  <option>Arbitrum</option>
-                  <option>Optimism</option>
-                  <option>Avalanche</option>
-                  <option>Robinhood</option>
                 </Select>
               </div>
 
               <div className="col-span-2">
                 <Input
-                  label={
-                    data.settlementChain === 'Algorand' || !data.settlementChain
-                      ? 'Algorand Settlement Address *'
-                      : data.settlementChain === 'Solana'
-                        ? 'Solana Settlement Address *'
-                        : data.settlementChain === 'Stellar'
-                          ? 'Stellar Settlement Address *'
-                          : 'EVM Settlement Address *'
-                  }
-                  placeholder={
-                    data.settlementChain === 'Algorand' || !data.settlementChain
-                      ? 'ALGO...'
-                      : data.settlementChain === 'Solana'
-                        ? 'Base58 Solana address...'
-                        : data.settlementChain === 'Stellar'
-                          ? 'G...'
-                          : '0x...'
-                  }
+                  label="Algorand Settlement Address *"
+                  placeholder="ALGO..."
                   value={data.settlementAddress || ''}
                   onChange={handleChange('settlementAddress')}
                   error={errors.settlementAddress}
-                  helperText={`Earnings will be deposited into this wallet in USDC on ${data.settlementChain || 'Algorand'}.`}
+                  helperText="Earnings will be deposited into this wallet in USDC on Algorand. Non-Algorand chains are currently disabled."
                 />
               </div>
 

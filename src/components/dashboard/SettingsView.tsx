@@ -58,13 +58,6 @@ const SECTIONS: { group: string; items: { id: SectionId; name: string; icon: typ
  */
 const PAYOUT_CHAINS = [
   { value: 'algorand', name: 'Algorand', placeholder: '58 characters' },
-  { value: 'base', name: 'Base', placeholder: '0x...' },
-  { value: 'ethereum', name: 'Ethereum', placeholder: '0x...' },
-  { value: 'arbitrum', name: 'Arbitrum', placeholder: '0x...' },
-  { value: 'optimism', name: 'Optimism', placeholder: '0x...' },
-  { value: 'avalanche', name: 'Avalanche', placeholder: '0x...' },
-  { value: 'stellar', name: 'Stellar', placeholder: 'G...' },
-  { value: 'solana', name: 'Solana', placeholder: 'Base58 address' },
 ];
 
 /** Label left with its explanation, control right. The row shape the whole page is built from. */
