@@ -2,7 +2,7 @@
 
 import { errorMessage } from '../lib/errors';
 import React, { useEffect, useState } from 'react';
-import { Mail, KeyRound, ArrowLeft, ArrowRight, CheckCircle, Link2 } from 'lucide-react';
+import { Mail, KeyRound, ArrowLeft, ArrowRight, CheckCircle, Link2, Sparkles } from 'lucide-react';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { authApi } from '../api/auth';
 import { useAuth } from './AuthContext';
@@ -66,28 +66,60 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
   const [notice, setNotice] = useState<string | null>(null);
   const [devLink, setDevLink] = useState<string | null>(null);
   const [isLocal, setIsLocal] = useState(false);
+  const [comingSoonEmail, setComingSoonEmail] = useState<string | null>(null);
 
   useEffect(() => {
     setIsLocal(LOCAL_HOSTS.has(window.location.hostname));
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('auth_error') === 'coming_soon') {
+        setComingSoonEmail(params.get('email') || 'This account');
+      }
+    } catch {
+      // ignore in environments without window.location
+    }
   }, []);
 
   const handleGoogleSignIn = async () => {
     setBusy('google');
     setError(null);
+    setComingSoonEmail(null);
+    let attemptedEmail: string | null = null;
     try {
       const userCredential = await signInWithPopup(auth, googleProvider);
+      attemptedEmail = userCredential.user.email || null;
       const oauthCredential = GoogleAuthProvider.credentialFromResult(userCredential);
       const tokenToSend = oauthCredential?.idToken || (await userCredential.user.getIdToken());
       await authApi.signInWithGoogle(tokenToSend);
       await refresh();
       onSignedIn();
     } catch (err: unknown) {
-      const errObj = err as { code?: string; message?: string };
+      const errObj = err as {
+        code?: string;
+        message?: string;
+        status?: number;
+        body?: { comingSoon?: boolean; email?: string };
+      };
       if (errObj?.code === 'auth/popup-closed-by-user') {
         // User closed popup without signing in
         return;
       }
-      setError(errorMessage(err, 'Google sign-in failed'));
+      if (auth.currentUser) {
+        await auth.signOut().catch(() => null);
+      }
+      const msg = errorMessage(err, 'Google sign-in failed');
+      const isComingSoon =
+        errObj?.body?.comingSoon ||
+        errObj?.status === 403 ||
+        /coming soon/i.test(msg) ||
+        /whitelist/i.test(msg);
+
+      if (isComingSoon) {
+        setComingSoonEmail(errObj?.body?.email || attemptedEmail || 'This Google account');
+        setError(null);
+        return;
+      }
+      setError(msg);
     } finally {
       setBusy(null);
     }
@@ -99,6 +131,7 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
     setBusy('magic');
     setError(null);
     setDevLink(null);
+    setComingSoonEmail(null);
     try {
       const result = await authApi.requestMagicLink(email);
       setMode('magic-sent');
@@ -106,8 +139,24 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
         setNotice('Email delivery is not configured. The link was printed to the backend console.');
         if (result.devLink) setDevLink(result.devLink);
       }
-    } catch (err) {
-      setError(errorMessage(err, 'Could not send the sign-in link'));
+    } catch (err: unknown) {
+      const errObj = err as {
+        status?: number;
+        body?: { comingSoon?: boolean; email?: string };
+      };
+      const msg = errorMessage(err, 'Could not send the sign-in link');
+      const isComingSoon =
+        errObj?.body?.comingSoon ||
+        errObj?.status === 403 ||
+        /coming soon/i.test(msg) ||
+        /whitelist/i.test(msg);
+
+      if (isComingSoon) {
+        setComingSoonEmail(errObj?.body?.email || email);
+        setError(null);
+        return;
+      }
+      setError(msg);
     } finally {
       setBusy(null);
     }
@@ -116,6 +165,7 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
   const handleOtp = async () => {
     setBusy('otp');
     setError(null);
+    setComingSoonEmail(null);
     try {
       const result = await authApi.requestOtp(email);
       setMode('otp-code');
@@ -123,8 +173,24 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
         setNotice('Email delivery is not configured. The code was printed to the backend console.');
         if (result.devCode) setCode(result.devCode);
       }
-    } catch (err) {
-      setError(errorMessage(err, 'Could not send the code'));
+    } catch (err: unknown) {
+      const errObj = err as {
+        status?: number;
+        body?: { comingSoon?: boolean; email?: string };
+      };
+      const msg = errorMessage(err, 'Could not send the code');
+      const isComingSoon =
+        errObj?.body?.comingSoon ||
+        errObj?.status === 403 ||
+        /coming soon/i.test(msg) ||
+        /whitelist/i.test(msg);
+
+      if (isComingSoon) {
+        setComingSoonEmail(errObj?.body?.email || email);
+        setError(null);
+        return;
+      }
+      setError(msg);
     } finally {
       setBusy(null);
     }
@@ -153,12 +219,30 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
   const handleVerify = async () => {
     setBusy('verify');
     setError(null);
+    setComingSoonEmail(null);
     try {
       await authApi.verifyOtp(email, code);
       await refresh();
       onSignedIn();
-    } catch (err) {
-      setError(errorMessage(err, 'That code is not valid'));
+    } catch (err: unknown) {
+      const errObj = err as {
+        status?: number;
+        body?: { comingSoon?: boolean; email?: string };
+      };
+      const msg = errorMessage(err, 'That code is not valid');
+      const isComingSoon =
+        errObj?.body?.comingSoon ||
+        errObj?.status === 403 ||
+        /coming soon/i.test(msg) ||
+        /whitelist/i.test(msg);
+
+      if (isComingSoon) {
+        setComingSoonEmail(errObj?.body?.email || email);
+        setMode('choose');
+        setError(null);
+        return;
+      }
+      setError(msg);
     } finally {
       setBusy(null);
     }
@@ -172,6 +256,42 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
 
   return (
     <>
+      {comingSoonEmail && (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/20 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-amber-400">
+              <Sparkles size={12} className="text-amber-400" /> Coming Soon
+            </span>
+            <button
+              type="button"
+              onClick={() => setComingSoonEmail(null)}
+              className="cursor-pointer border-0 bg-transparent text-xs text-muted hover:text-main p-0"
+            >
+              Dismiss
+            </button>
+          </div>
+          <h3 className="mt-2.5 text-sm font-semibold text-main">
+            Spigot is coming soon for this account!
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            <span className="font-mono text-main font-medium">{comingSoonEmail}</span> is not on our early access whitelist yet. We are rolling out access gradually and will open to all users soon.
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setComingSoonEmail(null);
+                setEmail('');
+                setMode('choose');
+              }}
+              className="cursor-pointer border-0 bg-transparent text-xs text-amber-400 hover:text-amber-300 underline p-0 font-medium"
+            >
+              Try another account
+            </button>
+          </div>
+        </div>
+      )}
+
       {mode !== 'choose' && (
         <button
           type="button"
@@ -179,6 +299,7 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
             setMode('choose');
             setNotice(null);
             setError(null);
+            setComingSoonEmail(null);
           }}
           className="flex items-center gap-1.5 text-xs text-muted hover:text-main bg-transparent border-0 cursor-pointer p-0 mb-4"
         >
@@ -216,7 +337,10 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
             <input
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={e => {
+                setEmail(e.target.value);
+                if (comingSoonEmail) setComingSoonEmail(null);
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && emailValid && busy === null) void handleMagicLink();
               }}

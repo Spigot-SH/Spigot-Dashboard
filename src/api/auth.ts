@@ -26,6 +26,7 @@ export interface AuthUser {
   avatarUrl: string | null;
   emailVerified: boolean;
   authProviders: string[];
+  isAdmin?: boolean;
   /** Missing when the backend predates the profile column. */
   profile?: Profile;
 }

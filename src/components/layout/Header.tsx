@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Sun, Moon, Box, Search } from 'lucide-react';
+import { Sun, Moon, Box, Search, Shield } from 'lucide-react';
 import AccountChip from '../../auth/AccountChip';
 import { useAuth } from '../../auth/AuthContext';
 import { getPublisherId } from '../../api/client';
@@ -110,6 +110,21 @@ const Header: React.FC = () => {
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+          {user?.isAdmin && (
+            <button
+              type="button"
+              onClick={() => router.push('/admin')}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider cursor-pointer transition-colors ${
+                pathname === '/admin'
+                  ? 'border-accent bg-accent text-on-accent'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+              }`}
+              title="Open Admin Console"
+            >
+              <Shield size={13} />
+              <span>Admin</span>
+            </button>
+          )}
           <AccountChip />
         </div>
       </div>

@@ -6,10 +6,12 @@ import { useWallet } from '@txnlab/use-wallet-react';
 import {
   AlertCircle,
   CheckCircle,
+  Clock,
   CreditCard,
   ExternalLink,
   Gift,
   QrCode,
+  Send,
   Wallet,
 } from 'lucide-react';
 import { creditsApi, CreditsOverview, Tier } from '../api/credits';
@@ -37,7 +39,7 @@ interface Props {
 }
 
 type Stage = 'idle' | 'quoting' | 'signing' | 'confirming';
-type Step = 'amount' | 'method' | 'crypto';
+type Step = 'amount' | 'method' | 'crypto' | 'social_tasks';
 type WalletKind = 'algorand' | 'evm' | 'stellar';
 
 const RAZORPAY_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
@@ -233,6 +235,24 @@ export const AddCreditModal: React.FC<{
   } | null>(null);
   const [connectingFreighter, setConnectingFreighter] = useState(false);
 
+  // Social tasks state for $20 test credit tier
+  const [followedX, setFollowedX] = useState(false);
+  const [xHandleOrPost, setXHandleOrPost] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
+
+  // Promo code state
+  const [promoCode, setPromoCode] = useState('');
+  const [promoApplying, setPromoApplying] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  // Credit Request state (when test credits are blocked)
+  const [requestAmount, setRequestAmount] = useState<'10' | '20'>('10');
+  const [requestReason, setRequestReason] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestMessage, setRequestMessage] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
   // Razorpay's checkout is a hosted script, so it can only be attached from the browser. The
   // modal opening is what pulls it in; a visitor who never tops up never downloads it.
   const razorpayRequested = useRef(false);
@@ -331,12 +351,86 @@ export const AddCreditModal: React.FC<{
     setStage('confirming');
     try {
       const res = await creditsApi.treasuryTopUp(selected);
-      finish(res.credited);
+      finish(res.credited, res.explorerUrl);
     } catch (err) {
       setError(apiErrorMessage(err, 'Test credit could not be added.'));
       setStage('idle');
     }
   }, [chosenTier, selected, finish]);
+
+  const submitSocialTasks = useCallback(async () => {
+    if (!chosenTier) return;
+    if (!followedX || !xHandleOrPost.trim() || !linkedinUrl.trim()) {
+      setError('Please complete all 3 tasks and provide your handles/links.');
+      return;
+    }
+    setError(null);
+    setStage('confirming');
+    try {
+      const res = await creditsApi.treasuryTopUp(selected, undefined, undefined, {
+        followedX: true,
+        xHandleOrPost: xHandleOrPost.trim(),
+        linkedinUrl: linkedinUrl.trim(),
+      });
+      finish(res.credited, res.explorerUrl);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Task verification failed.'));
+      setStage('idle');
+    }
+  }, [chosenTier, selected, followedX, xHandleOrPost, linkedinUrl, finish]);
+
+  const handleApplyPromo = useCallback(
+    async (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      const trimmed = promoCode.trim();
+      if (!trimmed) return;
+      setPromoApplying(true);
+      setPromoError(null);
+      setPromoMessage(null);
+      try {
+        const res = await creditsApi.applyPromo(trimmed);
+        setPromoMessage(
+          res.message ||
+            `Promo code ${res.code} applied! Added $${res.credited.toFixed(2)} to your balance.`,
+        );
+        setPromoCode('');
+        onCredited();
+      } catch (err) {
+        setPromoError(apiErrorMessage(err, 'Failed to apply promo code.'));
+      } finally {
+        setPromoApplying(false);
+      }
+    },
+    [promoCode, onCredited],
+  );
+
+  const handleRequestCredits = useCallback(
+    async (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      const num = parseFloat(requestAmount);
+      if (num !== 10 && num !== 20) {
+        setRequestError('Only $10 or $20 credits can be requested.');
+        return;
+      }
+      setRequestError(null);
+      setRequestMessage(null);
+      setRequestSubmitting(true);
+      try {
+        const res = await creditsApi.requestCredits({
+          amount: num,
+          reason: requestReason.trim() || undefined,
+        });
+        setRequestMessage(res.message);
+        setRequestReason('');
+        onCredited();
+      } catch (err) {
+        setRequestError(apiErrorMessage(err, 'Failed to submit credit request.'));
+      } finally {
+        setRequestSubmitting(false);
+      }
+    },
+    [requestAmount, requestReason, onCredited],
+  );
 
   const connectEvm = async (how: 'injected' | 'walletconnect') => {
     setError(null);
@@ -466,6 +560,13 @@ export const AddCreditModal: React.FC<{
     setError(null);
     setReceipt(null);
     setStage('idle');
+    setFollowedX(false);
+    setXHandleOrPost('');
+    setLinkedinUrl('');
+    setPromoCode('');
+    setPromoApplying(false);
+    setPromoMessage(null);
+    setPromoError(null);
   };
 
   const title = receipt
@@ -474,7 +575,9 @@ export const AddCreditModal: React.FC<{
       ? 'How much credit?'
       : step === 'method'
         ? 'How would you like to pay?'
-        : 'Pay from a wallet';
+        : step === 'social_tasks'
+          ? 'Complete tasks for $20 credit'
+          : 'Pay from a wallet';
 
   return (
     <Modal
@@ -488,10 +591,10 @@ export const AddCreditModal: React.FC<{
               // Without this a failure from the step being left, "Razorpay is not
               // configured" for instance, stays on screen under the next step's controls.
               setError(null);
-              setStep(step === 'crypto' ? 'method' : 'amount');
+              setStep(step === 'crypto' || step === 'social_tasks' ? 'method' : 'amount');
             }
       }
-      backLabel={step === 'crypto' ? 'Payment method' : 'Change amount'}
+      backLabel={step === 'crypto' || step === 'social_tasks' ? 'Payment method' : 'Change amount'}
     >
       {receipt ? (
         <div className="flex flex-col gap-4">
@@ -524,35 +627,278 @@ export const AddCreditModal: React.FC<{
         <div className="flex flex-col gap-4">
           {step === 'amount' && (
             <>
-              <div className="grid grid-cols-3 gap-2">
-                {(overview?.tiers || []).map(tier => (
-                  <button
-                    key={tier.id}
-                    type="button"
-                    aria-pressed={selected === tier.id}
-                    onClick={() => setSelected(tier.id)}
-                    className={`cursor-pointer rounded-md border-0 px-3 py-4 text-center text-lg ${
-                      selected === tier.id
-                        ? 'bg-main font-semibold text-bg'
-                        : 'bg-bg text-main hover:bg-panel-hover'
-                    }`}
-                  >
-                    {tier.label}
-                  </button>
-                ))}
-              </div>
+              {overview?.testCreditClaimed ? (
+                <div className="space-y-4">
+                  {/* Blocked alert banner */}
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <Clock size={16} className="mt-0.5 shrink-0 text-amber-400" />
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-main">
+                          Test Credits Claimed
+                        </p>
+                        <p className="text-[11px] leading-relaxed text-muted">
+                          You have already received test credits ($10 / $20) on this account. Direct test credit claims are now blocked. You can submit a credit request below for administrator approval.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-              {/* Secondary until an amount is picked, so the button reads as inert rather
-                  than as an accented call to action that refuses the click. */}
-              <Button
-                type="button"
-                variant={chosenTier ? 'primary' : 'secondary'}
-                onClick={() => setStep('method')}
-                disabled={!chosenTier}
-                className="w-full"
-              >
-                Continue
-              </Button>
+                  {/* Active Pending Request status */}
+                  {overview.pendingCreditRequest ? (
+                    <div className="rounded-lg border border-border bg-panel p-4 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+                          Credit Request Status
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+                          <Clock size={11} /> Pending Review
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between pt-1">
+                        <span className="text-2xl font-bold font-mono text-main">
+                          ${overview.pendingCreditRequest.amountUsdc.toFixed(2)}
+                        </span>
+                        <span className="text-xs text-muted">
+                          Submitted {new Date(overview.pendingCreditRequest.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {overview.pendingCreditRequest.reason && (
+                        <p className="text-xs text-muted italic m-0">
+                          &ldquo;{overview.pendingCreditRequest.reason}&rdquo;
+                        </p>
+                      )}
+                      <p className="text-[11px] text-muted/70 m-0">
+                        Your request is currently in the administrator queue. Once approved, credits will be added to your balance automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    /* Request more credits form */
+                    <div className="rounded-lg border border-border bg-panel p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-main">
+                          <Send size={13} className="text-accent" />
+                          <span>Request Credits</span>
+                        </div>
+                        <span className="text-[11px] text-muted">Admin Approval</span>
+                      </div>
+
+                      {overview.latestCreditRequest?.status === 'rejected' && (
+                        <div className="rounded border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-300">
+                          Previous request was rejected: {overview.latestCreditRequest.adminNote || 'No reason provided'}. You may submit a new request.
+                        </div>
+                      )}
+
+                      <form onSubmit={handleRequestCredits} className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium text-muted mb-1.5">
+                            Select Amount ($ USDC)
+                          </label>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            {(['10', '20'] as const).map(amt => (
+                              <button
+                                key={amt}
+                                type="button"
+                                onClick={() => {
+                                  setRequestAmount(amt);
+                                  setRequestError(null);
+                                }}
+                                className={`rounded-lg border p-3 text-center transition-all cursor-pointer ${
+                                  requestAmount === amt
+                                    ? 'border-main bg-main text-bg shadow-sm'
+                                    : 'border-border bg-bg text-main hover:border-white/30 hover:bg-panel-hover'
+                                }`}
+                              >
+                                <div className="text-lg font-bold font-mono">${amt}</div>
+                                <div
+                                  className={`text-[11px] mt-0.5 ${
+                                    requestAmount === amt ? 'text-bg/85' : 'text-muted'
+                                  }`}
+                                >
+                                  {amt === '10' ? '$10 Test Credit' : '$20 Test Credit'}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                          <p className="mt-1.5 text-[11px] text-muted">
+                            Only $10 or $20 credits can be requested.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-muted mb-1.5">
+                            Purpose / Usage Intent (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={requestReason}
+                            onChange={e => setRequestReason(e.target.value)}
+                            placeholder="e.g. Testing Claude MCP server integration"
+                            className="w-full rounded border border-border bg-bg px-3 py-1.5 text-xs text-main placeholder:text-muted/60 outline-none focus:border-main"
+                          />
+                        </div>
+
+                        {requestError && (
+                          <p className="m-0 flex items-center gap-1.5 text-xs text-error">
+                            <AlertCircle size={13} className="text-error" /> {requestError}
+                          </p>
+                        )}
+                        {requestMessage && (
+                          <p className="m-0 flex items-center gap-1.5 text-xs text-main">
+                            <CheckCircle size={13} className="text-main" /> {requestMessage}
+                          </p>
+                        )}
+
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          className="w-full"
+                          isLoading={requestSubmitting}
+                          disabled={requestSubmitting || (requestAmount !== '10' && requestAmount !== '20')}
+                        >
+                          Submit Credit Request (${requestAmount})
+                        </Button>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* Promo code redemption card */}
+                  <div className="rounded-lg border border-border bg-bg p-3.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-main">
+                        <Gift size={13} className="text-muted" />
+                        <span>Have a promo code?</span>
+                      </div>
+                      <span className="text-[11px] text-muted">Get extra credits</span>
+                    </div>
+                    <form onSubmit={handleApplyPromo} className="mt-2.5 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter promo code"
+                        value={promoCode}
+                        onChange={e => {
+                          setPromoCode(e.target.value.toUpperCase());
+                          setPromoError(null);
+                          setPromoMessage(null);
+                        }}
+                        disabled={promoApplying}
+                        className="flex-1 rounded border border-border bg-panel px-3 py-1.5 text-xs uppercase text-main placeholder:normal-case placeholder:text-muted/60 focus:border-main focus:outline-none"
+                      />
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!promoCode.trim() || promoApplying}
+                        isLoading={promoApplying}
+                      >
+                        Apply
+                      </Button>
+                    </form>
+                    {promoMessage && (
+                      <p className="m-0 mt-2 flex items-center gap-1.5 text-xs text-main">
+                        <CheckCircle size={13} className="text-main" /> {promoMessage}
+                      </p>
+                    )}
+                    {promoError && (
+                      <p className="m-0 mt-2 flex items-center gap-1.5 text-xs text-error">
+                        <AlertCircle size={13} className="text-error" /> {promoError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(overview?.tiers || []).map(tier => (
+                      <button
+                        key={tier.id}
+                        type="button"
+                        aria-pressed={selected === tier.id}
+                        onClick={() => setSelected(tier.id)}
+                        className={`cursor-pointer rounded-lg border p-4 text-center transition-all ${
+                          selected === tier.id
+                            ? 'border-main bg-main text-bg'
+                            : 'border-border bg-bg text-main hover:border-white/30 hover:bg-panel-hover'
+                        }`}
+                      >
+                        <div className="text-xl font-bold">{tier.label}</div>
+                        {tier.taskRequired ? (
+                          <div
+                            className={`mt-1.5 inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+                              selected === tier.id ? 'bg-bg/20 text-bg' : 'bg-accent/15 text-accent'
+                            }`}
+                          >
+                            Social tasks
+                          </div>
+                        ) : (
+                          <div
+                            className={`mt-1.5 inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+                              selected === tier.id ? 'bg-bg/20 text-bg' : 'bg-white/10 text-muted'
+                            }`}
+                          >
+                            Instant
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Promo code redemption card */}
+                  <div className="rounded-lg border border-border bg-bg p-3.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-main">
+                        <Gift size={13} className="text-muted" />
+                        <span>Have a promo code?</span>
+                      </div>
+                      <span className="text-[11px] text-muted">Get extra credits</span>
+                    </div>
+                    <form onSubmit={handleApplyPromo} className="mt-2.5 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter promo code"
+                        value={promoCode}
+                        onChange={e => {
+                          setPromoCode(e.target.value.toUpperCase());
+                          setPromoError(null);
+                          setPromoMessage(null);
+                        }}
+                        disabled={promoApplying}
+                        className="flex-1 rounded border border-border bg-panel px-3 py-1.5 text-xs uppercase text-main placeholder:normal-case placeholder:text-muted/60 focus:border-main focus:outline-none"
+                      />
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!promoCode.trim() || promoApplying}
+                        isLoading={promoApplying}
+                      >
+                        Apply
+                      </Button>
+                    </form>
+                    {promoMessage && (
+                      <p className="m-0 mt-2 flex items-center gap-1.5 text-xs text-main">
+                        <CheckCircle size={13} className="text-main" /> {promoMessage}
+                      </p>
+                    )}
+                    {promoError && (
+                      <p className="m-0 mt-2 flex items-center gap-1.5 text-xs text-error">
+                        <AlertCircle size={13} className="text-error" /> {promoError}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Secondary until an amount is picked */}
+                  <Button
+                    type="button"
+                    variant={chosenTier ? 'primary' : 'secondary'}
+                    onClick={() => setStep('method')}
+                    disabled={!chosenTier}
+                    className="w-full"
+                  >
+                    Continue
+                  </Button>
+                </>
+              )}
             </>
           )}
 
@@ -602,12 +948,23 @@ export const AddCreditModal: React.FC<{
                   </>
                 }
               />
-              {isTestnetProfile && (
+              {isTestnetProfile && !overview?.testCreditClaimed && (
                 <Choice
                   icon={<Gift size={18} />}
                   title="Test credit"
-                  hint="Nobody is charged. It is funded by us and it works only on the test network."
-                  onClick={addTestCredit}
+                  hint={
+                    chosenTier.taskRequired || chosenTier.amountUsdc === 20
+                      ? 'Complete verifiable tasks on X and LinkedIn to claim $20 test credit.'
+                      : 'Nobody is charged. It is funded by us and it works only on the test network.'
+                  }
+                  onClick={() => {
+                    setError(null);
+                    if (chosenTier.taskRequired || chosenTier.amountUsdc === 20) {
+                      setStep('social_tasks');
+                    } else {
+                      addTestCredit();
+                    }
+                  }}
                   disabled={busy}
                 />
               )}
@@ -617,6 +974,143 @@ export const AddCreditModal: React.FC<{
                 </p>
               )}
             </>
+          )}
+
+          {step === 'social_tasks' && chosenTier && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between rounded-md border border-border bg-bg px-3.5 py-2.5">
+                <div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Verifiable Tasks
+                  </span>
+                  <div className="text-xs text-main">
+                    Complete all 3 tasks to unlock your $20 test credit
+                  </div>
+                </div>
+                <span className="font-mono text-lg font-semibold text-main">
+                  {chosenTier.label}
+                </span>
+              </div>
+
+              {/* Task 1: Follow @spigot_sh on X */}
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-bg p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-panel text-[11px] font-bold text-main">
+                      1
+                    </span>
+                    <span className="text-sm font-medium text-main">Follow @spigot_sh on X</span>
+                  </div>
+                  <a
+                    href="https://x.com/intent/follow?screen_name=spigot_sh"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-panel px-2.5 py-1 text-xs font-medium text-main hover:border-white/30 hover:bg-panel-hover"
+                  >
+                    Follow on X <ExternalLink size={11} />
+                  </a>
+                </div>
+                <p className="m-0 pl-7 text-xs text-muted">
+                  Follow our official account on X for updates and releases.
+                </p>
+                <div className="pl-7 pt-0.5">
+                  <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-main">
+                    <input
+                      type="checkbox"
+                      checked={followedX}
+                      onChange={e => setFollowedX(e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-border accent-main"
+                    />
+                    <span>I have followed @spigot_sh</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Task 2: Post an intent about Spigot on X */}
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-bg p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-panel text-[11px] font-bold text-main">
+                      2
+                    </span>
+                    <span className="text-sm font-medium text-main">Post an intent on X</span>
+                  </div>
+                  <a
+                    href={`https://x.com/intent/tweet?text=${encodeURIComponent(
+                      'Building with @spigot_sh — metered API gateways and instant MCP connectivity for AI agents! 🚀\n\nhttps://spigot.sh',
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-panel px-2.5 py-1 text-xs font-medium text-main hover:border-white/30 hover:bg-panel-hover"
+                  >
+                    Post on X <ExternalLink size={11} />
+                  </a>
+                </div>
+                <p className="m-0 pl-7 text-xs text-muted">
+                  Post about what you are building with Spigot on X.
+                </p>
+                <div className="pl-7">
+                  <input
+                    type="text"
+                    placeholder="Your X handle or post URL (e.g. @yourhandle)"
+                    value={xHandleOrPost}
+                    onChange={e => setXHandleOrPost(e.target.value)}
+                    className="w-full rounded border border-border bg-panel px-3 py-1.5 text-xs text-main placeholder:text-muted/60 focus:border-main focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Task 3: Share an intent on LinkedIn */}
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-bg p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-panel text-[11px] font-bold text-main">
+                      3
+                    </span>
+                    <span className="text-sm font-medium text-main">
+                      Share an intent on LinkedIn
+                    </span>
+                  </div>
+                  <a
+                    href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+                      'https://spigot.sh',
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-panel px-2.5 py-1 text-xs font-medium text-main hover:border-white/30 hover:bg-panel-hover"
+                  >
+                    Share on LinkedIn <ExternalLink size={11} />
+                  </a>
+                </div>
+                <p className="m-0 pl-7 text-xs text-muted">
+                  Share Spigot with your professional network on LinkedIn.
+                </p>
+                <div className="pl-7">
+                  <input
+                    type="text"
+                    placeholder="Your LinkedIn profile or post URL (e.g. linkedin.com/in/...)"
+                    value={linkedinUrl}
+                    onChange={e => setLinkedinUrl(e.target.value)}
+                    className="w-full rounded border border-border bg-panel px-3 py-1.5 text-xs text-main placeholder:text-muted/60 focus:border-main focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                onClick={submitSocialTasks}
+                disabled={
+                  !followedX ||
+                  xHandleOrPost.trim().length < 2 ||
+                  linkedinUrl.trim().length < 5 ||
+                  busy
+                }
+                isLoading={busy}
+                className="w-full mt-1"
+              >
+                {busy ? stageLabel : 'Verify Tasks & Claim $20 Credit'}
+              </Button>
+            </div>
           )}
 
           {step === 'crypto' && chosenTier && (
@@ -823,9 +1317,14 @@ const TopUpPanel: React.FC<Props> = ({ overview, onCredited }) => {
           Credit you add here is what your API calls spend.
         </p>
       </div>
-      <Button type="button" onClick={() => setOpen(true)}>
-        Add credit
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="secondary" onClick={() => setOpen(true)}>
+          <Gift size={14} className="mr-1.5" /> Promo code
+        </Button>
+        <Button type="button" onClick={() => setOpen(true)}>
+          Add credit
+        </Button>
+      </div>
 
       <AddCreditModal
         isOpen={open}

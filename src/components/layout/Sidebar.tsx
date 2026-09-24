@@ -13,7 +13,9 @@ import {
   LifeBuoy,
   Compass,
   Bot,
+  Shield,
 } from 'lucide-react';
+import { useAuth } from '../../auth/AuthContext';
 
 interface SidebarProps {
   publisherId: string;
@@ -80,6 +82,18 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
           },
         ];
 
+  const { user } = useAuth();
+
+  const allNavItems = [...navItems];
+  if (user?.isAdmin) {
+    allNavItems.push({
+      name: 'Admin Console',
+      path: '/admin',
+      icon: Shield,
+      exact: false,
+    });
+  }
+
   return (
     // Below `md` the column is an icon rail. A fixed 240px column on a phone left the
     // content about 80px wide; hiding the nav outright would leave the console with no way
@@ -90,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
       </p>
 
       <nav className="flex flex-col">
-        {navItems.map(item => {
+        {allNavItems.map(item => {
           const isOverview = item.name === 'Overview';
           const isActive = isOverview
             ? pathname === item.path || pathname === '/dashboard'
