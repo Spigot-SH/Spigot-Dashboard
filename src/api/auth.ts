@@ -109,6 +109,11 @@ export const authApi = {
       },
     ),
 
+  checkWhitelist: (email: string) =>
+    request<{ whitelisted: boolean; comingSoon?: boolean; error?: string }>(
+      `/auth/whitelist/check?email=${encodeURIComponent(email)}`,
+    ),
+
   requestOtp: (email: string) =>
     request<{ sent: boolean; channel: string; expiresInMinutes: number; devCode?: string }>(
       '/auth/otp',

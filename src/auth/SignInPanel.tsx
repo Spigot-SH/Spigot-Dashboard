@@ -133,6 +133,21 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
     setDevLink(null);
     setComingSoonEmail(null);
     try {
+      try {
+        const check = await authApi.checkWhitelist(email);
+        if (check && !check.whitelisted) {
+          setComingSoonEmail(email);
+          return;
+        }
+      } catch (err: unknown) {
+        const errObj = err as { status?: number; body?: { comingSoon?: boolean; email?: string } };
+        const msg = errorMessage(err, 'Could not check whitelist');
+        if (errObj?.status === 403 || errObj?.body?.comingSoon || /whitelist/i.test(msg) || /coming soon/i.test(msg)) {
+          setComingSoonEmail(errObj?.body?.email || email);
+          return;
+        }
+      }
+
       const result = await authApi.requestMagicLink(email);
       setMode('magic-sent');
       if (result.channel === 'console') {
@@ -167,6 +182,21 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
     setError(null);
     setComingSoonEmail(null);
     try {
+      try {
+        const check = await authApi.checkWhitelist(email);
+        if (check && !check.whitelisted) {
+          setComingSoonEmail(email);
+          return;
+        }
+      } catch (err: unknown) {
+        const errObj = err as { status?: number; body?: { comingSoon?: boolean; email?: string } };
+        const msg = errorMessage(err, 'Could not check whitelist');
+        if (errObj?.status === 403 || errObj?.body?.comingSoon || /whitelist/i.test(msg) || /coming soon/i.test(msg)) {
+          setComingSoonEmail(errObj?.body?.email || email);
+          return;
+        }
+      }
+
       const result = await authApi.requestOtp(email);
       setMode('otp-code');
       if (result.channel === 'console') {
