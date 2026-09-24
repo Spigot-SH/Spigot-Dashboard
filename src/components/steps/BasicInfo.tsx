@@ -7,7 +7,7 @@ import { Card } from '../common/Card';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
-import { apiClient, setApiKey, setPublisherId } from '../../api/client';
+import { apiClient, setPublisherId } from '../../api/client';
 
 interface BasicInfoProps {
   data: OnboardingData;
@@ -72,7 +72,6 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
           githubUrl: data.githubUrl,
         });
         updateData({ publisherId: result.id, apiKey: result.api_key });
-        setApiKey(result.api_key!);
         setPublisherId(result.id!);
         onNext();
       } catch (err) {

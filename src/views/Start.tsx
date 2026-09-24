@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Skeleton } from '../components/common/Skeleton';
-import { apiClient, setApiKey, setPublisherId } from '../api/client';
+import { apiClient, setPublisherId } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../lib/errors';
 
@@ -76,8 +76,7 @@ export default function Start() {
     try {
       const name = user?.email ? user.email.split('@')[0] : 'My Publisher';
       const created = await apiClient.registerPublisher({ name });
-      if (!created.api_key || !created.id) throw new Error('Server returned no key');
-      setApiKey(created.api_key);
+      if (!created.id) throw new Error('Server returned no publisher');
       setPublisherId(created.id);
       await refresh();
     } catch (e: unknown) {

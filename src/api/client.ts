@@ -5,16 +5,11 @@
  * so a cross-origin XHR would not send it. There is deliberately no override.
  */
 export const BASE_URL = '/api';
+// Publisher calls authenticate with the httpOnly session cookie only. The API key is for
+// server-to-server use; the browser never stores or sends it. This name is kept only so
+// clearAuth() can delete a key saved by an older build.
 const API_KEY_STORAGE_KEY = 'x402_api_key';
 const PUBLISHER_ID_STORAGE_KEY = 'x402_publisher_id';
-
-export function setApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
-}
-
-export function getApiKey(): string | null {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
-}
 
 export function setPublisherId(id: string): void {
   localStorage.setItem(PUBLISHER_ID_STORAGE_KEY, id);
@@ -27,11 +22,6 @@ export function getPublisherId(): string | null {
 export function clearAuth(): void {
   localStorage.removeItem(API_KEY_STORAGE_KEY);
   localStorage.removeItem(PUBLISHER_ID_STORAGE_KEY);
-}
-
-function authHeaders(): Record<string, string> {
-  const key = getApiKey();
-  return key ? { 'X-API-Key': key } : {};
 }
 
 // --- Types ---
@@ -248,7 +238,7 @@ export const apiClient = {
     const res = await fetch(`${BASE_URL}/publishers`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     const body = await res.json().catch(() => ({}));
@@ -266,12 +256,23 @@ export const apiClient = {
     return body;
   },
 
+  /** New server-to-server API key, returned once. The previous key stops working. */
+  async rotateApiKey(publisherId: string): Promise<{ id: string; api_key: string }> {
+    const res = await fetch(`${BASE_URL}/publishers/${publisherId}/api-key`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || 'Could not issue a new key');
+    return body;
+  },
+
   async initiateVerification(
     domain: string,
   ): Promise<{ id: string; challenge: string; instructions: string }> {
     const res = await fetch(`${BASE_URL}/verify/initiate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain }),
     });
     if (!res.ok) throw new Error('Failed to initiate verification');
@@ -281,7 +282,7 @@ export const apiClient = {
   async checkVerification(verificationId: string): Promise<{ status: string }> {
     const res = await fetch(`${BASE_URL}/verify/check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ verification_id: verificationId }),
     });
     if (!res.ok) throw new Error('Failed to check verification');
@@ -291,7 +292,7 @@ export const apiClient = {
   async createApi(data: Partial<ApiInfo>): Promise<ApiInfo> {
     const res = await fetch(`${BASE_URL}/apis`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     const body = await res.json().catch(() => ({}));
@@ -306,7 +307,7 @@ export const apiClient = {
   async updateApiEndpoints(apiId: string, endpoints: ApiEndpoint[]): Promise<{ count: number }> {
     const res = await fetch(`${BASE_URL}/apis/${apiId}/endpoints`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoints }),
     });
     if (!res.ok) throw new Error('Failed to save endpoints');
@@ -316,7 +317,7 @@ export const apiClient = {
   async importEndpoints(apiId: string, specOrUrl: string): Promise<{ endpoints: ApiEndpoint[] }> {
     const res = await fetch(`${BASE_URL}/apis/${apiId}/import`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ spec: specOrUrl }),
     });
     if (!res.ok) throw new Error('Failed to import OpenAPI spec');
@@ -327,7 +328,7 @@ export const apiClient = {
     const res = await fetch(`${BASE_URL}/apis/${apiId}/pricing`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pricingData),
     });
     if (!res.ok) throw new Error('Failed to set pricing');
@@ -338,7 +339,6 @@ export const apiClient = {
     const res = await fetch(`${BASE_URL}/apis/${apiId}/test`, {
       method: 'POST',
       credentials: 'include',
-      headers: { ...authHeaders() },
     });
     if (!res.ok) throw new Error('Failed to run tests');
     return res.json();
@@ -348,7 +348,6 @@ export const apiClient = {
     const res = await fetch(`${BASE_URL}/apis/${apiId}/publish`, {
       method: 'PUT',
       credentials: 'include',
-      headers: { ...authHeaders() },
     });
     if (!res.ok) throw new Error('Failed to publish API');
     return res.json();
@@ -357,7 +356,6 @@ export const apiClient = {
   async getDashboard(publisherId: string): Promise<DashboardResponse> {
     const res = await fetch(`${BASE_URL}/dashboard/${publisherId}`, {
       credentials: 'include',
-      headers: { ...authHeaders() },
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -374,7 +372,6 @@ export const apiClient = {
   async getWallet(publisherId: string): Promise<{ address?: string; chain?: string } | null> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/wallet`, {
       credentials: 'include',
-      headers: { ...authHeaders() },
     });
     if (!res.ok) throw new Error(`Could not read the payout wallet (${res.status})`);
     return res.json();
@@ -393,7 +390,7 @@ export const apiClient = {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/wallet`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     const body = await res.json().catch(() => ({}));
@@ -422,7 +419,6 @@ export const apiClient = {
     const res = await fetch(`${BASE_URL}/dashboard/${publisherId}/settle`, {
       method: 'POST',
       credentials: 'include',
-      headers: { ...authHeaders() },
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -436,7 +432,7 @@ export const apiClient = {
   async addSkill(apiId: string, name: string): Promise<{ id: string }> {
     const res = await fetch(`${BASE_URL}/apis/${apiId}/skills`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
     if (!res.ok) throw new Error('Failed to add skill');

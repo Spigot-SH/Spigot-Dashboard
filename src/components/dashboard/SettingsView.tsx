@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { apiClient, getApiKey, getPublisherId, setApiKey, setPublisherId } from '../../api/client';
+import { apiClient, getPublisherId, setPublisherId } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { Button } from '../common/Button';
 import { apiErrorMessage, errorMessage } from '../../lib/errors';
@@ -56,9 +56,7 @@ const SECTIONS: { group: string; items: { id: SectionId; name: string; icon: typ
  * `Spigot-Algorand/backend/src/services/chains.ts` knows and `processSettlement` can pay; the
  * values are lower case because that is how the backend matches them.
  */
-const PAYOUT_CHAINS = [
-  { value: 'algorand', name: 'Algorand', placeholder: '58 characters' },
-];
+const PAYOUT_CHAINS = [{ value: 'algorand', name: 'Algorand', placeholder: '58 characters' }];
 
 /** Label left with its explanation, control right. The row shape the whole page is built from. */
 const Row: React.FC<{ label: string; hint?: string; children?: React.ReactNode }> = ({
@@ -122,7 +120,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
   const search = useRef<HTMLInputElement>(null);
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  const [apiKey, setApiKeyState] = useState<string | null>(() => getApiKey());
+  // A key the server just issued. It is held in memory for this view only and never stored:
+  // the backend keeps only its hash, so it cannot be shown again after this page is left.
+  const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [payout, setPayout] = useState<
@@ -153,7 +153,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
   const onMyList = mine.some(group => group.items.some(item => item.id === active));
   const pane: SectionId = onMyList ? active : 'general';
 
-  const currentApiKey = apiKey || publisher?.api_key;
+  const currentApiKey = apiKey;
   const effectivePubId = publisher?.id || getPublisherId() || publisherId || 'active';
   const gatewayUrl =
     process.env.NEXT_PUBLIC_GATEWAY_URL ||
@@ -245,12 +245,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
     setGenerating(true);
     setGenError(null);
     try {
-      const name = user?.email ? user.email.split('@')[0] : 'My Publisher';
-      const result = await apiClient.registerPublisher({ name });
+      // A publisher that already exists gets a fresh key (the old one stops working); a new
+      // account gets its first key from registration.
+      const existingId = publisher?.id || getPublisherId();
+      const result = existingId
+        ? await apiClient.rotateApiKey(existingId)
+        : await apiClient.registerPublisher({
+            name: user?.email ? user.email.split('@')[0] : 'My Publisher',
+          });
       if (!result.api_key || !result.id) throw new Error('Server returned no key');
-      setApiKey(result.api_key);
       setPublisherId(result.id);
       setApiKeyState(result.api_key);
+      setShowKey(true);
       await refresh();
     } catch (e: unknown) {
       setGenError(errorMessage(e, 'Could not generate a key'));
@@ -512,7 +518,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
 
         {pane === 'key' && (
           <Pane title="API key" hint="Used by the Spigot CLI and SDKs to manage your endpoints.">
-            <Row label="Secret key" hint="Treat it like a password. Anyone holding it acts as you.">
+            <Row
+              label="Secret key"
+              hint="Treat it like a password. Shown once: copy it now. Generating a new key disables the old one."
+            >
               {currentApiKey ? (
                 <div className="flex items-center gap-2">
                   <span className="max-w-[220px] truncate rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-xs text-main">
@@ -541,7 +550,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                 </div>
               ) : (
                 <Button size="sm" isLoading={generating} onClick={generate}>
-                  Generate key
+                  {publisher?.id ? 'Generate new key' : 'Generate key'}
                 </Button>
               )}
             </Row>
