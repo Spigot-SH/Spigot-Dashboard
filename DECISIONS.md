@@ -22,6 +22,17 @@ If you cannot fill in **Why**, there is no entry to write.
 
 ---
 
+## 2026-09-24 — Admin console is completely decoupled to standalone spigot-admin app
+
+**Decided:** Removed all administrative pages, views, API clients, and navigation entrypoints from `spigot-dash`. All admin capabilities now live in the standalone `spigot-admin` app deployed at `https://spigot-admin.vercel.app`.
+
+**Why:** Separation of concerns. The public user and publisher dashboard (`spigot-dash`) should have no admin bundle footprint, routes, or privileged controls exposed to general users.
+
+**Files:** `src/app/admin/page.tsx`, `src/views/AdminDashboard.tsx`, `src/api/admin.ts`, `src/components/layout/Header.tsx`, `src/components/layout/Sidebar.tsx`.
+**Ref:** `d2e1bbf`
+
+---
+
 ## 2026-09-20 — The publish wizard stops inventing results; a payout address can be set on its own
 
 **Decided:** `setWallet` reads the 202 `confirmationRequired` answer and returns
