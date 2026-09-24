@@ -91,7 +91,7 @@ export const ApiTesterModal: React.FC<ApiTesterModalProps> = ({
           : 999,
       });
     }
-  }, [api?.slug, api?.pricePerRequest, signedIn, credits]);
+  }, [api, signedIn, credits]);
 
   useEffect(() => {
     if (isOpen && api) {

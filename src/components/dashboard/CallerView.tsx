@@ -35,7 +35,7 @@ interface CallerViewProps {
   publisherId?: string;
   isUnlocked?: boolean;
   isCompleted?: boolean;
-  onOpenTutorial?: () => void;
+  onOpenTutorial?: (connector?: 'claude' | 'opencode') => void;
   onUnlockTutorial?: () => Promise<void>;
   isUnlocking?: boolean;
 }

@@ -12,6 +12,7 @@ import {
   BookOpen,
   LifeBuoy,
   Compass,
+  Bot,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -39,11 +40,19 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
     exact: false,
   };
 
+  const connectors = {
+    name: 'AI Connectors',
+    path: `/dashboard/${publisherId}/connectors`,
+    icon: Bot,
+    exact: false,
+  };
+
   const navItems =
     view === 'caller'
       ? [
           overview,
           exploreApis,
+          connectors,
           { name: 'Account & credit', path: '/profile', icon: Wallet, exact: true },
           {
             name: 'Settings',
@@ -56,6 +65,7 @@ const Sidebar: React.FC<SidebarProps> = ({ publisherId, view = 'provider' }) => 
           overview,
           { name: 'APIs', path: `/dashboard/${publisherId}/apis`, icon: Server, exact: false },
           exploreApis,
+          connectors,
           {
             name: 'Analytics',
             path: `/dashboard/${publisherId}/analytics`,

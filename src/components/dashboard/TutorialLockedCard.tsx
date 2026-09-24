@@ -5,6 +5,7 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Logo } from '../common/Logo';
 import { ClaudeLogo } from '../common/ClaudeLogo';
+import { OpenCodeLogo } from '../common/OpenCodeLogo';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCredit } from '../../lib/format';
 import { Lock, Wallet, ArrowRight, Sparkles } from 'lucide-react';
@@ -44,7 +45,11 @@ export const TutorialLockedCard: React.FC<TutorialLockedCardProps> = ({
             <div className="flex items-center gap-2 rounded-xl border border-border bg-bg/80 px-2.5 py-1.5 shadow-sm">
               <Logo size={20} className="text-accent" />
               <ArrowRight size={13} className="text-muted" />
-              <ClaudeLogo size={20} />
+              <div className="flex items-center gap-1.5">
+                <ClaudeLogo size={18} />
+                <span className="text-[10px] text-muted">/</span>
+                <OpenCodeLogo size={16} className="text-main" />
+              </div>
             </div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-3 py-1 text-xs font-semibold text-warning ring-1 ring-warning/30">
               <Lock size={12} /> Tutorial Locked
@@ -56,7 +61,7 @@ export const TutorialLockedCard: React.FC<TutorialLockedCardProps> = ({
               Unlock Spigot MCP Tutorial & Dashboard Access
             </h2>
             <p className="mt-1 text-xs leading-relaxed text-muted">
-              Add credit to unlock the Spigot MCP connector tutorial for Claude.ai and activate
+              Add credit to unlock the Spigot MCP connector tutorial for Claude.ai and OpenCode, and activate
               full dashboard access.
             </p>
           </div>
@@ -127,3 +132,5 @@ export const TutorialLockedCard: React.FC<TutorialLockedCardProps> = ({
     </Card>
   );
 };
+
+export default TutorialLockedCard;

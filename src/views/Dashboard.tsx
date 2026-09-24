@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '../components/layout/Sidebar';
 import { Card } from '../components/common/Card';
@@ -28,6 +28,7 @@ import { ExploreApisView } from '../components/dashboard/ExploreApisView';
 import { CallerView } from '../components/dashboard/CallerView';
 import { ConsoleCover, CONSOLE_COVERS } from '../components/dashboard/ConsoleCover';
 import { McpOnboardingBanner } from '../components/dashboard/McpOnboardingBanner';
+import { ConnectorsView } from '../components/dashboard/ConnectorsView';
 import { McpTutorialModal } from '../components/dashboard/McpTutorialModal';
 import { TutorialLockedCard } from '../components/dashboard/TutorialLockedCard';
 import { creditsApi } from '../api/credits';
@@ -84,8 +85,14 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const [tutorialUnlocked, setTutorialUnlocked] = useState<boolean>(true);
   const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(true);
   const [showTutorialModal, setShowTutorialModal] = useState<boolean>(false);
+  const [tutorialConnector, setTutorialConnector] = useState<'claude' | 'opencode'>('opencode');
   const [isUnlocking, setIsUnlocking] = useState<boolean>(false);
   const [checkedTutorial, setCheckedTutorial] = useState<boolean>(false);
+
+  const openTutorial = useCallback((conn: 'claude' | 'opencode' = 'opencode') => {
+    setTutorialConnector(conn);
+    setShowTutorialModal(true);
+  }, []);
 
   useEffect(() => {
     try {
@@ -114,7 +121,9 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
       }
       try {
         localStorage.setItem('spigot_mcp_unlocked', 'true');
-      } catch {}
+      } catch {
+        // Ignore localStorage error
+      }
       setTutorialUnlocked(true);
       setShowTutorialModal(true);
       void refresh();
@@ -127,7 +136,9 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     try {
       localStorage.setItem('spigot_mcp_unlocked', 'true');
       localStorage.setItem('spigot_mcp_tutorial_completed', 'true');
-    } catch {}
+    } catch {
+      // Ignore localStorage error
+    }
     setTutorialUnlocked(true);
     setTutorialCompleted(true);
     setShowTutorialModal(false);
@@ -224,6 +235,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
           onComplete={handleTutorialComplete}
           canClose={tutorialUnlocked && tutorialCompleted}
           onClose={() => setShowTutorialModal(false)}
+          initialConnector={tutorialConnector}
         />
         <div className="flex">
           <div className={isDashboardBlocked ? 'pointer-events-none opacity-50 select-none' : ''}>
@@ -237,12 +249,14 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                 <SettingsView publisherId={effectivePublisherId} />
               ) : activeSection === 'explore' ? (
                 <ExploreApisView publisherId={effectivePublisherId} />
+              ) : activeSection === 'connectors' ? (
+                <ConnectorsView publisherId={effectivePublisherId} onOpenTutorial={openTutorial} />
               ) : (
                 <CallerView
                   publisherId={effectivePublisherId}
                   isUnlocked={tutorialUnlocked}
                   isCompleted={tutorialCompleted}
-                  onOpenTutorial={() => setShowTutorialModal(true)}
+                  onOpenTutorial={openTutorial}
                   onUnlockTutorial={handleUnlockTutorial}
                   isUnlocking={isUnlocking}
                 />
@@ -262,6 +276,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
           onComplete={handleTutorialComplete}
           canClose={tutorialUnlocked && tutorialCompleted}
           onClose={() => setShowTutorialModal(false)}
+          initialConnector={tutorialConnector}
         />
         <div className="flex">
           <Sidebar publisherId={publisherId || 'active'} />
@@ -283,6 +298,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
         onComplete={handleTutorialComplete}
         canClose={tutorialUnlocked && tutorialCompleted}
         onClose={() => setShowTutorialModal(false)}
+        initialConnector={tutorialConnector}
       />
       <div className="flex">
         <div className={isDashboardBlocked ? 'pointer-events-none opacity-50 select-none' : ''}>
@@ -321,6 +337,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
               <ExploreApisView publisherId={effectivePublisherId} />
             )}
 
+            {activeSection === 'connectors' && (
+              <ConnectorsView publisherId={effectivePublisherId} onOpenTutorial={openTutorial} />
+            )}
+
             {showFigures && activeSection === 'apis' && (
               <ApisView stats={stats} publisherId={effectivePublisherId} />
             )}
@@ -354,7 +374,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                 ) : (
                   <McpOnboardingBanner
                     className="mb-8"
-                    onOpenTutorial={() => setShowTutorialModal(true)}
+                    onOpenTutorial={openTutorial}
                   />
                 )}
 
