@@ -61,6 +61,31 @@ const nextConfig: NextConfig = {
    * the upstream body is proxied verbatim. Rewrites pass the request through untouched, which
    * is why the gateway is not wrapped in a Route Handler.
    */
+  /**
+   * The app signs people in and moves money, so it must not be framed (clickjacking on
+   * withdraw, settle or payout forms) and must not be sniffed or leak full URLs in Referer.
+   * The CSP deliberately limits only framing, <base>, plugins and form targets: a script/connect
+   * allowlist needs a browser test against Firebase, Google and WalletConnect first.
+   */
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+          },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
+  },
+
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${BACKEND_ORIGIN}/api/:path*` },
