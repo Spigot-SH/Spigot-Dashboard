@@ -35,18 +35,36 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
+ * A user object must carry the two fields every other consumer treats as always present
+ * (`AuthUser.id`, `AuthUser.email`) — `user: {}` is a record but carries no identity, and
+ * `Boolean(state.user)` (`AuthContext.tsx`'s `signedIn`) would still read an empty object as
+ * signed in.
+ */
+const isValidUser = (value: unknown): value is AuthUser =>
+  isRecord(value) &&
+  typeof value.id === 'string' &&
+  value.id.length > 0 &&
+  typeof value.email === 'string' &&
+  value.email.length > 0;
+
+/**
  * `/auth/me` is cast to `SessionState` by `request<T>` (`api/request.ts`) with no runtime
  * check — a TypeScript generic proves nothing about what actually arrived on the wire. A
- * malformed body (not an object, `null`, an array, or a JSON scalar left over from a proxy
- * error page) must fail closed to the signed-out shape rather than crash the provider when its
- * fields are read, and `tutorialUnlocked` — the money-gated flag — must only ever be `true` for
- * the exact boolean `true`. `Boolean("false")` is `true`, which is the bug this replaces: any
- * truthy value used to count as unlocked.
+ * malformed body (not an object, `null`, an array, a JSON scalar left over from a proxy error
+ * page, or a partial object missing a valid `user`) must fail closed to the whole signed-out
+ * shape — every entitlement false, not just `user: null` with everything else read at face
+ * value — rather than crash the provider or leak an entitlement while signed out. A response
+ * such as `{ tutorialUnlocked: true }` (no `user` at all) or `{ user: {} }` (a user with no
+ * identity) both hit this and return `SIGNED_OUT_STATE` wholesale.
+ *
+ * `tutorialUnlocked` — the money-gated flag — must only ever be `true` for the exact boolean
+ * `true`. `Boolean("false")` is `true`, which is the bug this replaces: any truthy value used
+ * to count as unlocked.
  */
 export const parseSessionState = (raw: unknown): SessionState => {
-  if (!isRecord(raw)) return SIGNED_OUT_STATE;
+  if (!isRecord(raw) || !isValidUser(raw.user)) return SIGNED_OUT_STATE;
   return {
-    user: isRecord(raw.user) ? (raw.user as unknown as AuthUser) : null,
+    user: raw.user,
     publisher: isRecord(raw.publisher) ? (raw.publisher as unknown as PublisherInfo) : null,
     credits: typeof raw.credits === 'number' && Number.isFinite(raw.credits) ? raw.credits : 0,
     wallet: isRecord(raw.wallet) ? (raw.wallet as unknown as WalletInfo) : null,

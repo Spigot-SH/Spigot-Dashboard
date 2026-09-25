@@ -39,6 +39,7 @@ import { Logo } from '../components/common/Logo';
 import { runUnlockFlow } from './dashboardUnlock';
 import { runProviderAccessRequestFlow } from './providerAccessFlow';
 import { isProviderAccessBlocked as computeProviderAccessBlocked } from './providerAccessGate';
+import { shouldShowLoadingSpinner, canOpenTutorial } from './dashboardGates';
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -104,10 +105,18 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const [isUnlocking, setIsUnlocking] = useState<boolean>(false);
   const [isRequestingAccess, setIsRequestingAccess] = useState<boolean>(false);
 
-  const openTutorial = useCallback((conn: 'claude' | 'opencode' = 'opencode') => {
-    setTutorialConnector(conn);
-    setShowTutorialModal(true);
-  }, []);
+  // Shared by every entry point that hands this to a banner button (ConnectorsView,
+  // McpOnboardingBanner on both the Connectors route and the provider overview) — none of them
+  // check `tutorialUnlocked` themselves, so this is the one place that must refuse to open the
+  // paid tutorial for a locked account (see dashboardGates.ts).
+  const openTutorial = useCallback(
+    (conn: 'claude' | 'opencode' = 'opencode') => {
+      if (!canOpenTutorial(tutorialUnlocked)) return;
+      setTutorialConnector(conn);
+      setShowTutorialModal(true);
+    },
+    [tutorialUnlocked],
+  );
 
   useEffect(() => {
     try {
@@ -300,7 +309,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     );
   }
 
-  if (loading || !stats) {
+  // A provider-access-blocked account never gets a stats fetch (the effect above skips it), so
+  // `stats` staying null is expected, not still-loading — waiting on it here would spin forever
+  // instead of reaching the locked card below, which reads none of these figures anyway.
+  if (shouldShowLoadingSpinner(loading, Boolean(stats), isProviderAccessBlocked)) {
     return (
       <>
         <McpTutorialModal
@@ -322,6 +334,13 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
       </>
     );
   }
+
+  // `stats` is only ever null past this point while `isProviderAccessBlocked` (the loading
+  // gate above already returned otherwise) — and every figure below is itself already gated
+  // behind `showFigures`, which requires `!isProviderAccessBlocked`, so this fallback is never
+  // actually shown. It exists so the render below has a concrete value to read, the same way
+  // `EMPTY_STATS` already stands in for a failed load.
+  const safeStats = stats ?? EMPTY_STATS;
 
   return (
     <>
@@ -404,10 +423,12 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                 )}
 
                 {showFigures && activeSection === 'apis' && (
-                  <ApisView stats={stats} publisherId={effectivePublisherId} />
+                  <ApisView stats={safeStats} publisherId={effectivePublisherId} />
                 )}
 
-                {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
+                {showFigures && activeSection === 'analytics' && (
+                  <AnalyticsView stats={safeStats} />
+                )}
 
                 {showFigures && activeSection === 'overview' && (
                   <>
@@ -415,8 +436,8 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                       src={CONSOLE_COVERS.provider}
                       title="Your APIs"
                       subtitle={
-                        stats.health.status
-                          ? `What your endpoints have earned and served. Last health check: ${stats.health.status}.`
+                        safeStats.health.status
+                          ? `What your endpoints have earned and served. Last health check: ${safeStats.health.status}.`
                           : 'What your endpoints have earned and served. No health check has run yet.'
                       }
                     />
@@ -430,7 +451,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                     <div>
                       <SettlePanel
                         publisherId={effectivePublisherId}
-                        available={stats.availableBalance ?? 0}
+                        available={safeStats.availableBalance ?? 0}
                         onSettled={() => setRefreshKey(k => k + 1)}
                       />
 
@@ -444,7 +465,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                             Available Balance
                           </h3>
                           <div className="text-3xl flex items-baseline gap-2">
-                            ${(stats.availableBalance ?? 0).toFixed(4)}
+                            ${(safeStats.availableBalance ?? 0).toFixed(4)}
                           </div>
                         </Card>
 
@@ -456,7 +477,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                             Pending Balance
                           </h3>
                           <div className="text-3xl flex items-baseline gap-2">
-                            ${(stats.pendingBalance ?? 0).toFixed(4)}
+                            ${(safeStats.pendingBalance ?? 0).toFixed(4)}
                           </div>
                         </Card>
 
@@ -468,10 +489,10 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                             Requests this month
                           </h3>
                           <div className="text-3xl font-mono">
-                            {stats.requestsMonth.toLocaleString()}
+                            {safeStats.requestsMonth.toLocaleString()}
                           </div>
                           <div className="text-xs text-muted mt-1">
-                            Today: {stats.requestsToday.toLocaleString()}
+                            Today: {safeStats.requestsToday.toLocaleString()}
                           </div>
                         </Card>
 
@@ -483,7 +504,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                             Success Rate
                           </h3>
                           <div className="text-3xl text-accent font-mono">
-                            {stats.successRate === null ? UNKNOWN : `${stats.successRate}%`}
+                            {safeStats.successRate === null ? UNKNOWN : `${safeStats.successRate}%`}
                           </div>
                         </Card>
                       </div>
@@ -518,8 +539,8 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {stats.endpoints && stats.endpoints.length > 0 ? (
-                                  stats.endpoints.map((ep: DashboardEndpointRow, i: number) => {
+                                {safeStats.endpoints && safeStats.endpoints.length > 0 ? (
+                                  safeStats.endpoints.map((ep: DashboardEndpointRow, i: number) => {
                                     const reqCount = Number(ep.request_count ?? ep.requests ?? 0);
                                     const rev = Number(ep.total_revenue ?? ep.revenue ?? 0);
                                     const lat = Number(ep.avg_latency ?? ep.latency ?? 0);
@@ -572,28 +593,30 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {stats.settlements && stats.settlements.length > 0 ? (
-                                  stats.settlements.map((s: DashboardSettlementRow, i: number) => {
-                                    const amt = Number(s.amount || 0);
-                                    const dateStr = String(
-                                      s.created_at || s.period_end || s.date || 'Recent',
-                                    );
-                                    const tx = String(s.tx_id || s.txHash || s.id || UNKNOWN);
-                                    return (
-                                      <tr key={i}>
-                                        <Td>{dateStr.slice(0, 10)}</Td>
-                                        <Td numeric className="font-medium">
-                                          ${amt.toFixed(4)}
-                                        </Td>
-                                        <Td mono className="text-accent" title={tx}>
-                                          {truncateMiddle(tx)}
-                                        </Td>
-                                        <Td>
-                                          <StatusBadge status={settlementStatus(s.status)} />
-                                        </Td>
-                                      </tr>
-                                    );
-                                  })
+                                {safeStats.settlements && safeStats.settlements.length > 0 ? (
+                                  safeStats.settlements.map(
+                                    (s: DashboardSettlementRow, i: number) => {
+                                      const amt = Number(s.amount || 0);
+                                      const dateStr = String(
+                                        s.created_at || s.period_end || s.date || 'Recent',
+                                      );
+                                      const tx = String(s.tx_id || s.txHash || s.id || UNKNOWN);
+                                      return (
+                                        <tr key={i}>
+                                          <Td>{dateStr.slice(0, 10)}</Td>
+                                          <Td numeric className="font-medium">
+                                            ${amt.toFixed(4)}
+                                          </Td>
+                                          <Td mono className="text-accent" title={tx}>
+                                            {truncateMiddle(tx)}
+                                          </Td>
+                                          <Td>
+                                            <StatusBadge status={settlementStatus(s.status)} />
+                                          </Td>
+                                        </tr>
+                                      );
+                                    },
+                                  )
                                 ) : (
                                   <tr>
                                     <TdEmpty colSpan={4}>No settlements processed yet</TdEmpty>
@@ -608,38 +631,40 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                         <div className="lg:col-span-1 flex flex-col gap-8">
                           <Card header="Recent Transactions">
                             <div className="flex flex-col gap-4">
-                              {stats.transactions && stats.transactions.length > 0 ? (
-                                stats.transactions.map((tx: DashboardTransactionRow, i: number) => {
-                                  const amt = Number(tx.amount || 0);
-                                  const txHash = String(tx.tx_id || tx.id || UNKNOWN);
-                                  const timeStr = String(tx.created_at || tx.time || '');
-                                  return (
-                                    <div
-                                      key={i}
-                                      className="flex justify-between items-center p-3 bg-bg rounded border border-border"
-                                    >
-                                      <div>
-                                        <div
-                                          className="font-mono text-xs text-muted mb-1"
-                                          title={txHash}
-                                        >
-                                          {truncateMiddle(txHash, 8, 6)}
+                              {safeStats.transactions && safeStats.transactions.length > 0 ? (
+                                safeStats.transactions.map(
+                                  (tx: DashboardTransactionRow, i: number) => {
+                                    const amt = Number(tx.amount || 0);
+                                    const txHash = String(tx.tx_id || tx.id || UNKNOWN);
+                                    const timeStr = String(tx.created_at || tx.time || '');
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="flex justify-between items-center p-3 bg-bg rounded border border-border"
+                                      >
+                                        <div>
+                                          <div
+                                            className="font-mono text-xs text-muted mb-1"
+                                            title={txHash}
+                                          >
+                                            {truncateMiddle(txHash, 8, 6)}
+                                          </div>
+                                          <div className="text-xs text-muted">
+                                            {timeStr.slice(0, 16).replace('T', ' ')}
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-muted">
-                                          {timeStr.slice(0, 16).replace('T', ' ')}
+                                        <div className="text-right">
+                                          <div className="text-accent text-sm font-medium">
+                                            +${amt}
+                                          </div>
+                                          <div className="text-xs text-muted mt-1">
+                                            {tx.status || 'CONFIRMED'}
+                                          </div>
                                         </div>
                                       </div>
-                                      <div className="text-right">
-                                        <div className="text-accent text-sm font-medium">
-                                          +${amt}
-                                        </div>
-                                        <div className="text-xs text-muted mt-1">
-                                          {tx.status || 'CONFIRMED'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })
+                                    );
+                                  },
+                                )
                               ) : (
                                 <div className="p-4 text-center text-xs text-muted">
                                   No transactions recorded yet
@@ -653,7 +678,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                               <div className="flex justify-between items-center">
                                 <span className="text-muted text-sm">Last health check</span>
                                 <span className="font-medium text-sm">
-                                  {stats.health.status ?? 'None yet'}
+                                  {safeStats.health.status ?? 'None yet'}
                                 </span>
                               </div>
                               <div className="flex justify-between items-center">
@@ -661,9 +686,9 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                                   Average latency, all requests
                                 </span>
                                 <span className="font-medium text-sm font-mono">
-                                  {stats.successRate === null
+                                  {safeStats.successRate === null
                                     ? UNKNOWN
-                                    : `${stats.health.avgLatency}ms`}
+                                    : `${safeStats.health.avgLatency}ms`}
                                 </span>
                               </div>
                             </div>

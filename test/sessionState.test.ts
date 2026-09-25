@@ -6,6 +6,12 @@
  *   tutorialUnlocked === true. A null response must fail closed rather than crash the
  *   provider. Test missing, null and malformed values."
  *
+ * And the Codex round-2 rejection of 10c90b0+969f99e / backend bf82ebe
+ * (local/security-fixes/judge/f26dr2.q.out):
+ *
+ *   "src/auth/sessionState.ts:32-44: A partial response such as `{tutorialUnlocked:true}` with
+ *   no user, or `user: {}`, must parse as signed out, with every entitlement false. Test both."
+ *
  * This repo's only test runner is Node's own `--test` (see `test/domainVerification.test.ts`),
  * which strips TypeScript types but does not transform JSX. `parseSessionState` and
  * `SIGNED_OUT_STATE` were pulled out of `AuthContext.tsx` into `src/auth/sessionState.ts`
@@ -52,6 +58,41 @@ describe('parseSessionState — fails closed on a missing or malformed response'
       providerAccess: 'approved',
     };
     assert.deepEqual(parseSessionState(raw), raw);
+  });
+});
+
+describe('parseSessionState — a valid user is required, or the whole response is signed out (f26dr2.txt)', () => {
+  test('a partial response with an entitlement but no user at all is fully signed out, not just user: null', () => {
+    const result = parseSessionState({ tutorialUnlocked: true });
+    assert.deepEqual(result, SIGNED_OUT_STATE);
+    assert.equal(result.user, null);
+    assert.equal(result.tutorialUnlocked, false);
+    assert.equal(result.providerAccess, null);
+  });
+
+  test('user: {} (a record with no identity) is signed out, not treated as signed in', () => {
+    const result = parseSessionState({
+      user: {},
+      credits: 100,
+      tutorialUnlocked: true,
+      providerAccess: 'approved',
+    });
+    assert.deepEqual(result, SIGNED_OUT_STATE);
+    assert.equal(result.user, null);
+    assert.equal(result.credits, 0);
+    assert.equal(result.tutorialUnlocked, false);
+    assert.equal(result.providerAccess, null);
+  });
+
+  test('a user missing email (id only) is signed out', () => {
+    assert.deepEqual(parseSessionState({ user: { id: 'u1' } }), SIGNED_OUT_STATE);
+  });
+
+  test('a user with a non-string id is signed out', () => {
+    assert.deepEqual(
+      parseSessionState({ user: { id: 123, email: 'a@example.test' } }),
+      SIGNED_OUT_STATE,
+    );
   });
 });
 
