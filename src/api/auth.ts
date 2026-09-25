@@ -63,6 +63,12 @@ export interface SessionState {
   balances: Balances | null;
   /** Server-computed from the credit ledger. Missing when the backend predates this field. */
   tutorialUnlocked?: boolean;
+  /**
+   * The provider side (publisher registration, API create/publish, the provider dashboard) is
+   * coming soon: `null` means never asked, otherwise it is the admin-reviewed state. Missing
+   * when the backend predates this field.
+   */
+  providerAccess?: 'requested' | 'approved' | 'revoked' | null;
 }
 
 export interface PaymentReceipt {
@@ -139,6 +145,16 @@ export const authApi = {
     }),
 
   logout: () => request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
+
+  /**
+   * Request provider (publisher) access. Idempotent on the server: a repeat call while
+   * already requested or approved just reports the current state.
+   */
+  requestProviderAccess: () =>
+    request<{ success: boolean; providerAccess: string | null; alreadyRequested: boolean }>(
+      '/auth/provider-access/request',
+      { method: 'POST' },
+    ),
 
   activateWallet: () =>
     request<{ status: string; address: string; error?: string }>('/auth/wallet/activate', {

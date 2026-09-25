@@ -49,6 +49,7 @@ describe('parseSessionState — fails closed on a missing or malformed response'
       evmWallet: null,
       balances: null,
       tutorialUnlocked: true,
+      providerAccess: 'approved',
     };
     assert.deepEqual(parseSessionState(raw), raw);
   });
@@ -60,7 +61,10 @@ describe('parseSessionState — tutorialUnlocked accepts only the exact boolean 
   });
 
   test('null tutorialUnlocked is locked', () => {
-    assert.equal(parseSessionState({ user: VALID_USER, tutorialUnlocked: null }).tutorialUnlocked, false);
+    assert.equal(
+      parseSessionState({ user: VALID_USER, tutorialUnlocked: null }).tutorialUnlocked,
+      false,
+    );
   });
 
   test('the string "false" is locked — the Boolean(...) regression', () => {
@@ -78,7 +82,10 @@ describe('parseSessionState — tutorialUnlocked accepts only the exact boolean 
   });
 
   test('the number 1 is locked (not the boolean true)', () => {
-    assert.equal(parseSessionState({ user: VALID_USER, tutorialUnlocked: 1 }).tutorialUnlocked, false);
+    assert.equal(
+      parseSessionState({ user: VALID_USER, tutorialUnlocked: 1 }).tutorialUnlocked,
+      false,
+    );
   });
 
   test('an empty object is locked (truthy but not true)', () => {
@@ -117,5 +124,42 @@ describe('parseSessionState — other fields fail closed to safe defaults', () =
     assert.equal(result.evmWallet, null);
     assert.equal(result.balances, null);
     assert.equal(result.publisher, null);
+  });
+});
+
+describe('parseSessionState — providerAccess accepts only the three known server values', () => {
+  test('missing providerAccess is null (not approved)', () => {
+    assert.equal(parseSessionState({ user: VALID_USER }).providerAccess, null);
+  });
+
+  test('null providerAccess stays null', () => {
+    assert.equal(
+      parseSessionState({ user: VALID_USER, providerAccess: null }).providerAccess,
+      null,
+    );
+  });
+
+  test('an unrecognized string fails closed to null, not passed through', () => {
+    assert.equal(
+      parseSessionState({ user: VALID_USER, providerAccess: 'pending' }).providerAccess,
+      null,
+    );
+  });
+
+  test('a truthy non-string (the loose-read regression this guards against) fails closed to null', () => {
+    assert.equal(
+      parseSessionState({ user: VALID_USER, providerAccess: true }).providerAccess,
+      null,
+    );
+    assert.equal(parseSessionState({ user: VALID_USER, providerAccess: 1 }).providerAccess, null);
+  });
+
+  test('requested, approved and revoked all round-trip exactly', () => {
+    for (const value of ['requested', 'approved', 'revoked']) {
+      assert.equal(
+        parseSessionState({ user: VALID_USER, providerAccess: value }).providerAccess,
+        value,
+      );
+    }
   });
 });

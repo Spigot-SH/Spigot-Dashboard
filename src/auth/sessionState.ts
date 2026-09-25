@@ -14,7 +14,21 @@ export const SIGNED_OUT_STATE: SessionState = {
   evmWallet: null,
   balances: null,
   tutorialUnlocked: false,
+  providerAccess: null,
 };
+
+const PROVIDER_ACCESS_VALUES = new Set(['requested', 'approved', 'revoked']);
+
+/**
+ * Reads `providerAccess` the same way `tutorialUnlocked` is read below: strictly, so anything
+ * that is not one of the three known server values fails closed to `null` (not approved). A
+ * loose truthy read here would let any non-empty string — including a stray `"false"` — count
+ * as approved.
+ */
+const parseProviderAccess = (value: unknown): 'requested' | 'approved' | 'revoked' | null =>
+  typeof value === 'string' && PROVIDER_ACCESS_VALUES.has(value)
+    ? (value as 'requested' | 'approved' | 'revoked')
+    : null;
 
 /** An object, not an array — `typeof [] === 'object'` and `Array.isArray` is easy to forget. */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -41,5 +55,6 @@ export const parseSessionState = (raw: unknown): SessionState => {
     // Strict equality, not `Boolean(...)`: a string, a number, or anything else the server
     // (or a broken proxy in between) sends must never be treated as unlocked.
     tutorialUnlocked: raw.tutorialUnlocked === true,
+    providerAccess: parseProviderAccess(raw.providerAccess),
   };
 };

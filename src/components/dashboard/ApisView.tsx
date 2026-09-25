@@ -9,16 +9,6 @@ import { DashboardStats, DashboardEndpointRow } from '../../api/client';
 import { Server, Plus, Copy, Check, ExternalLink } from 'lucide-react';
 import { buildPublishedGatewayUrl } from '../../lib/gatewayUrl';
 
-/**
- * `DashboardEndpointRow` (src/api/client.ts) has no status field: the dashboard endpoints
- * query (Spigot-Algorand/backend/src/routes/dashboard.ts, `endpoints` query, ~line 132-142)
- * does not select `apis.status`. Read it defensively under an extended type so this still
- * works once that field is added, without widening the shared row type here (owned by another
- * change). Until the backend adds it, `api_status` is always undefined and every row fails
- * closed to no URL — see buildPublishedGatewayUrl in ../../lib/gatewayUrl.
- */
-type EndpointRowWithStatus = DashboardEndpointRow & { api_status?: string; status?: string };
-
 interface ApisViewProps {
   stats: DashboardStats;
   publisherId?: string;
@@ -125,12 +115,11 @@ export const ApisView: React.FC<ApisViewProps> = ({ stats, publisherId: _publish
                 // the API is PUBLISHED (Spigot-Algorand/backend/src/routes/gateway.ts:48-50).
                 // Without a valid slug, or without a confirmed PUBLISHED status, there is no
                 // real URL to show — leave it blank rather than build one that 404s.
-                const epWithStatus = ep as EndpointRowWithStatus;
                 const fullProxyUrl = buildPublishedGatewayUrl(
                   gatewayBase,
                   ep.api_slug,
                   epPath,
-                  epWithStatus.api_status ?? epWithStatus.status,
+                  ep.api_status,
                 );
                 const isCopied = copiedPath === epPath;
 

@@ -6,8 +6,11 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Skeleton } from '../components/common/Skeleton';
 import { apiClient, setPublisherId } from '../api/client';
+import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../lib/errors';
+import { ProviderAccessLockedCard } from '../components/dashboard/ProviderAccessLockedCard';
+import { runProviderAccessRequestFlow } from './providerAccessFlow';
 
 /** What the backend says about this publisher. null means the check has not answered yet. */
 interface Progress {
@@ -44,12 +47,28 @@ const ROLE_INTRO = {
 } as const;
 
 export default function Start() {
-  const { user, publisher, signedIn, loading, openSignIn, refresh } = useAuth();
+  const { user, publisher, providerAccess, signedIn, loading, openSignIn, refresh } = useAuth();
   const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [isRequestingAccess, setIsRequestingAccess] = useState(false);
+
+  // The provider side is coming soon: every step below either registers a publisher or reads
+  // its dashboard, and the backend now refuses both for an account that is not
+  // provider-approved. An already-existing publisher (grandfathered, or approved then
+  // revoked) still tries the checklist — its own requests surface the current 403 as `error`.
+  const isProviderAccessBlocked = !loading && !publisher && providerAccess !== 'approved';
+
+  const handleRequestProviderAccess = async () => {
+    setIsRequestingAccess(true);
+    try {
+      await runProviderAccessRequestFlow(authApi.requestProviderAccess, refresh);
+    } finally {
+      setIsRequestingAccess(false);
+    }
+  };
 
   useEffect(() => {
     if (!publisher) return;
@@ -96,6 +115,18 @@ export default function Start() {
           Sign in
         </Button>
       </Card>
+    );
+  }
+
+  if (isProviderAccessBlocked) {
+    return (
+      <div className="max-w-2xl mx-auto mt-8">
+        <ProviderAccessLockedCard
+          providerAccess={providerAccess}
+          onRequestAccess={handleRequestProviderAccess}
+          isRequesting={isRequestingAccess}
+        />
+      </div>
     );
   }
 

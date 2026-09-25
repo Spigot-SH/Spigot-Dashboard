@@ -5,6 +5,10 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import StepIndicator from '../components/layout/StepIndicator';
 import { Card } from '../components/common/Card';
+import { useAuth } from '../auth/AuthContext';
+import { authApi } from '../api/auth';
+import { ProviderAccessLockedCard } from '../components/dashboard/ProviderAccessLockedCard';
+import { runProviderAccessRequestFlow } from './providerAccessFlow';
 
 import BasicInfo from '../components/steps/BasicInfo';
 import DomainVerify from '../components/steps/DomainVerify';
@@ -40,6 +44,17 @@ const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
   const router = useRouter();
+  const { providerAccess, loading: authLoading, refresh } = useAuth();
+  const [isRequestingAccess, setIsRequestingAccess] = useState(false);
+
+  const handleRequestProviderAccess = async () => {
+    setIsRequestingAccess(true);
+    try {
+      await runProviderAccessRequestFlow(authApi.requestProviderAccess, refresh);
+    } finally {
+      setIsRequestingAccess(false);
+    }
+  };
 
   const handleNext = () => {
     if (currentStep < LAST_STEP) {
@@ -95,6 +110,23 @@ const Onboarding: React.FC = () => {
         return <BasicInfo {...props} />;
     }
   };
+
+  // The provider side is coming soon: step 1 registers a publisher and later steps create and
+  // publish an API, all now refused by the backend for an account that is not
+  // provider-approved (index.ts's publisher-registration gate, routes/apis.ts). Show the same
+  // lock this wizard's entry points (`/start`, `ApisView`'s "Publish New API") already send
+  // people past, rather than let step 1 fail with a bare 403.
+  if (!authLoading && providerAccess !== 'approved') {
+    return (
+      <div className="max-w-2xl mx-auto p-4 sm:p-8">
+        <ProviderAccessLockedCard
+          providerAccess={providerAccess ?? null}
+          onRequestAccess={handleRequestProviderAccess}
+          isRequesting={isRequestingAccess}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto p-4 sm:p-8 flex flex-col lg:flex-row gap-6 lg:gap-12">

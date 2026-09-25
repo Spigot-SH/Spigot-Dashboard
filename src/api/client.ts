@@ -126,6 +126,8 @@ export interface DashboardEndpointRow {
   avg_latency?: number;
   api_name?: string;
   api_slug?: string;
+  /** The owning API's publish status (`apis.status`). Backend commit b543472. */
+  api_status?: string;
 }
 
 export interface DashboardTransactionRow {

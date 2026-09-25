@@ -30,12 +30,14 @@ import { ConsoleCover, CONSOLE_COVERS } from '../components/dashboard/ConsoleCov
 import { McpOnboardingBanner } from '../components/dashboard/McpOnboardingBanner';
 import { ConnectorsView } from '../components/dashboard/ConnectorsView';
 import { McpTutorialModal } from '../components/dashboard/McpTutorialModal';
-import { TutorialLockedCard } from '../components/dashboard/TutorialLockedCard';
+import { ProviderAccessLockedCard } from '../components/dashboard/ProviderAccessLockedCard';
 import { creditsApi } from '../api/credits';
+import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { consoleFallback, useConsoleView } from '../lib/consoleView';
 import { Logo } from '../components/common/Logo';
 import { runUnlockFlow } from './dashboardUnlock';
+import { runProviderAccessRequestFlow } from './providerAccessFlow';
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -75,11 +77,13 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const {
     user,
     publisher,
-    credits,
     refresh,
     // The server computes this from the credit ledger; a client-side flag cannot be trusted
     // to gate the dashboard.
     tutorialUnlocked,
+    // Server-reviewed; the provider side (this whole dashboard, and publisher registration)
+    // is gated on this now, not on tutorialUnlocked.
+    providerAccess,
     loading: authLoading,
   } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -97,6 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const [showTutorialModal, setShowTutorialModal] = useState<boolean>(false);
   const [tutorialConnector, setTutorialConnector] = useState<'claude' | 'opencode'>('opencode');
   const [isUnlocking, setIsUnlocking] = useState<boolean>(false);
+  const [isRequestingAccess, setIsRequestingAccess] = useState<boolean>(false);
 
   const openTutorial = useCallback((conn: 'claude' | 'opencode' = 'opencode') => {
     setTutorialConnector(conn);
@@ -143,7 +148,19 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     setShowTutorialModal(false);
   };
 
-  const isDashboardBlocked = !authLoading && (!tutorialUnlocked || !tutorialCompleted);
+  const handleRequestProviderAccess = async () => {
+    setIsRequestingAccess(true);
+    try {
+      // `runProviderAccessRequestFlow` (src/views/providerAccessFlow.ts) mirrors
+      // `runUnlockFlow`: whether the request itself threw is not the answer, only a refreshed
+      // session confirming the server recorded it.
+      await runProviderAccessRequestFlow(authApi.requestProviderAccess, refresh);
+    } finally {
+      setIsRequestingAccess(false);
+    }
+  };
+
+  const isProviderAccessBlocked = !authLoading && providerAccess !== 'approved';
 
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;
@@ -164,11 +181,12 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
       return;
     }
 
-    // Backend routes/dashboard.ts now refuses these figures with 402 while the account is
-    // locked. Skip the request rather than let a real load failure and the paid-unlock wall
-    // collapse into the same generic "could not load your dashboard" message — the render
-    // below shows the lock directly, from `isDashboardBlocked`, not from this fetch failing.
-    if (isDashboardBlocked) {
+    // Backend routes/dashboard.ts now refuses these figures with 403 while the account is not
+    // provider-approved. Skip the request rather than let a real load failure and the
+    // provider-access wall collapse into the same generic "could not load your dashboard"
+    // message — the render below shows the lock directly, from `isProviderAccessBlocked`, not
+    // from this fetch failing.
+    if (isProviderAccessBlocked) {
       setLoading(false);
       setLoadError(null);
       return;
@@ -228,7 +246,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     return () => {
       isMounted = false;
     };
-  }, [publisherId, refreshKey, view, isDashboardBlocked]);
+  }, [publisherId, refreshKey, view, isProviderAccessBlocked]);
 
   const effectivePublisherId = getPublisherId() || publisherId || 'active';
   // Signed in with no publisher: there is nothing to load yet, so say that, not an error.
@@ -247,9 +265,9 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
           initialConnector={tutorialConnector}
         />
         <div className="flex">
-          <div className={isDashboardBlocked ? 'pointer-events-none opacity-50 select-none' : ''}>
-            <Sidebar publisherId={effectivePublisherId} view="caller" />
-          </div>
+          {/* Callers are unaffected by the provider-access gate: neither the tutorial unlock
+              nor provider approval ever blocks this console. */}
+          <Sidebar publisherId={effectivePublisherId} view="caller" />
           <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
             <div className="mx-auto max-w-[1400px]">
               {/* The caller console used to render `CallerView` for every section, so the
@@ -310,67 +328,76 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
         initialConnector={tutorialConnector}
       />
       <div className="flex">
-        <div className={isDashboardBlocked ? 'pointer-events-none opacity-50 select-none' : ''}>
+        <div
+          className={isProviderAccessBlocked ? 'pointer-events-none opacity-50 select-none' : ''}
+        >
           <Sidebar publisherId={effectivePublisherId} />
         </div>
 
         <div className="h-[calc(100vh-64px)] flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
           <div className="max-w-[1400px] mx-auto">
-            {needsAccount && (
-              <EmptyState
-                icon={<Logo size={56} className="text-accent" />}
-                title="No publisher account yet"
-                description="Your publisher console starts once you create one. It takes one click. Only calling APIs? Switch to Use APIs above."
-                action={
-                  <Button variant="primary" onClick={() => router.push('/start')}>
-                    Set up as a provider
-                  </Button>
-                }
-              />
-            )}
-
-            {loadError && !needsAccount && (
-              <EmptyState
-                title="Could not load your dashboard"
-                description={`${loadError} No figures are shown, because none loaded.`}
-                action={
-                  <Button variant="primary" size="sm" onClick={() => setRefreshKey(k => k + 1)}>
-                    Try again
-                  </Button>
-                }
-              />
-            )}
-
-            {/* Render Active Section */}
-            {activeSection === 'explore' && <ExploreApisView publisherId={effectivePublisherId} />}
-
-            {activeSection === 'connectors' && (
-              <ConnectorsView publisherId={effectivePublisherId} onOpenTutorial={openTutorial} />
-            )}
-
-            {/* Not behind `showFigures`: settings reads no dashboard figures, and a failed
-                stats request used to take the API key and the payout address down with it. It
-                is also not part of the $1.50 unlock, so it is never gated below. */}
-            {activeSection === 'settings' && <SettingsView publisherId={effectivePublisherId} />}
-
-            {/* Overview, APIs and Analytics are the "full dashboard access" the $1.50 unlock
-                sells (routes/credits.ts `/unlock-tutorial`; TutorialLockedCard copy below). The
-                backend now refuses their figures with 402 for a locked account (fetchStats
-                above skips the request entirely while `isDashboardBlocked`), so a direct link
-                to any of them must show the lock plainly — never blurred real content standing
-                in front of it, and never a generic load-failure message in its place. */}
-            {isDashboardBlocked &&
-            !needsAccount &&
-            ['apis', 'analytics', 'overview'].includes(activeSection) ? (
-              <TutorialLockedCard
-                balance={credits ?? 0}
-                onAddCredit={() => router.push('/profile')}
-                onUnlock={handleUnlockTutorial}
-                isUnlocking={isUnlocking}
+            {/* The provider side (publisher registration, API create/publish, and every
+                figure below) is coming soon: the backend now refuses all of it with 403 for
+                an account that is not provider-approved (routes/dashboard.ts, routes/apis.ts,
+                and publisher registration — see index.ts). fetchStats above already skips its
+                request while `isProviderAccessBlocked`, so this must show the lock plainly —
+                never blurred real content standing in front of it, and never a generic
+                load-failure message in its place. Explore, Connectors and Settings stay
+                reachable either way: none of them are provider-gated on the backend. */}
+            {isProviderAccessBlocked &&
+            (needsAccount || ['apis', 'analytics', 'overview'].includes(activeSection)) ? (
+              <ProviderAccessLockedCard
+                providerAccess={providerAccess}
+                onRequestAccess={handleRequestProviderAccess}
+                isRequesting={isRequestingAccess}
                 className="mb-8"
               />
             ) : (
               <>
+                {needsAccount && (
+                  <EmptyState
+                    icon={<Logo size={56} className="text-accent" />}
+                    title="No publisher account yet"
+                    description="Your publisher console starts once you create one. It takes one click. Only calling APIs? Switch to Use APIs above."
+                    action={
+                      <Button variant="primary" onClick={() => router.push('/start')}>
+                        Set up as a provider
+                      </Button>
+                    }
+                  />
+                )}
+
+                {loadError && !needsAccount && (
+                  <EmptyState
+                    title="Could not load your dashboard"
+                    description={`${loadError} No figures are shown, because none loaded.`}
+                    action={
+                      <Button variant="primary" size="sm" onClick={() => setRefreshKey(k => k + 1)}>
+                        Try again
+                      </Button>
+                    }
+                  />
+                )}
+
+                {/* Render Active Section */}
+                {activeSection === 'explore' && (
+                  <ExploreApisView publisherId={effectivePublisherId} />
+                )}
+
+                {activeSection === 'connectors' && (
+                  <ConnectorsView
+                    publisherId={effectivePublisherId}
+                    onOpenTutorial={openTutorial}
+                  />
+                )}
+
+                {/* Not behind `showFigures` or provider access: settings reads no dashboard
+                    figures, and a failed stats request used to take the API key and the
+                    payout address down with it. */}
+                {activeSection === 'settings' && (
+                  <SettingsView publisherId={effectivePublisherId} />
+                )}
+
                 {showFigures && activeSection === 'apis' && (
                   <ApisView stats={stats} publisherId={effectivePublisherId} />
                 )}

@@ -14,6 +14,11 @@ interface AuthContextValue {
   balances: Balances | null;
   /** Server-computed from the credit ledger; the dashboard must not decide this itself. */
   tutorialUnlocked: boolean;
+  /**
+   * The provider side is coming soon: server-reviewed, `null` until requested. The dashboard
+   * must read this strictly (`=== 'approved'`), never as a truthy string.
+   */
+  providerAccess: 'requested' | 'approved' | 'revoked' | null;
   loading: boolean;
   signedIn: boolean;
   /**
@@ -100,6 +105,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // caller of `setState` elsewhere in this provider cannot quietly reopen the "any
       // truthy value unlocks" bug.
       tutorialUnlocked: state.tutorialUnlocked === true,
+      // Same defense in depth as tutorialUnlocked above: re-asserted against the known values
+      // rather than trusted as-is, so a future caller of setState here cannot quietly widen it.
+      providerAccess:
+        state.providerAccess === 'requested' ||
+        state.providerAccess === 'approved' ||
+        state.providerAccess === 'revoked'
+          ? state.providerAccess
+          : null,
       loading,
       signedIn: Boolean(state.user),
       refresh,
