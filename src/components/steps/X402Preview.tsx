@@ -20,9 +20,9 @@ const X402Preview: React.FC<X402PreviewProps> = ({ data, onNext, onBack }) => {
   const endpoints: ApiEndpoint[] = data.endpoints?.length
     ? data.endpoints
     : [{ method: 'GET', path: '/example', name: 'Example', description: 'Example endpoint' }];
-  const apiIdSlug = data.apiName
-    ? data.apiName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    : 'my-api';
+  // The real slug the backend issued in ApiInfo.tsx (`POST /api/apis` response). It includes a
+  // random 5-char suffix the client cannot reproduce, so this must never be recomputed here.
+  const apiIdSlug = data.apiSlug;
 
   // The gateway is served from this origin, so no extra configuration is needed. Resolved in
   // an effect because this component is server-rendered first, where `window` does not exist —
@@ -64,9 +64,17 @@ const X402Preview: React.FC<X402PreviewProps> = ({ data, onNext, onBack }) => {
                       <ArrowRight size={16} className="text-muted" aria-hidden="true" />
                     </Td>
                     <Td mono className="text-accent">
-                      <span className="text-xs mr-2">{ep.method}</span>
-                      {gatewayDomain}/x402/{apiIdSlug}
-                      {ep.path}
+                      {apiIdSlug ? (
+                        <>
+                          <span className="text-xs mr-2">{ep.method}</span>
+                          {gatewayDomain}/x402/{apiIdSlug}
+                          {ep.path}
+                        </>
+                      ) : (
+                        <span className="text-muted">
+                          Gateway URL appears after the API is registered
+                        </span>
+                      )}
                     </Td>
                   </tr>
                 ))}
@@ -87,18 +95,27 @@ const X402Preview: React.FC<X402PreviewProps> = ({ data, onNext, onBack }) => {
               Consumers will call your API through the gateway, providing an L2 payment signature in
               the headers.
             </p>
-            <pre>
-              <code>
-                <span className="text-muted">curl</span> -X {sampleEndpoint.method} {gatewayDomain}
-                /x402/{apiIdSlug}
-                {sampleEndpoint.path} \ -H{' '}
-                <span className="text-accent-dim">&quot;Content-Type: application/json&quot;</span>{' '}
-                \ -H{' '}
-                <span className="text-accent-dim">
-                  &quot;x-x402-payment-signature: 0x7a8b...9c0d&quot;
-                </span>
-              </code>
-            </pre>
+            {apiIdSlug ? (
+              <pre>
+                <code>
+                  <span className="text-muted">curl</span> -X {sampleEndpoint.method}{' '}
+                  {gatewayDomain}
+                  /x402/{apiIdSlug}
+                  {sampleEndpoint.path} \ -H{' '}
+                  <span className="text-accent-dim">
+                    &quot;Content-Type: application/json&quot;
+                  </span>{' '}
+                  \ -H{' '}
+                  <span className="text-accent-dim">
+                    &quot;x-x402-payment-signature: 0x7a8b...9c0d&quot;
+                  </span>
+                </code>
+              </pre>
+            ) : (
+              <p className="text-sm text-muted">
+                This example fills in once your API is registered.
+              </p>
+            )}
           </div>
 
           <div>
