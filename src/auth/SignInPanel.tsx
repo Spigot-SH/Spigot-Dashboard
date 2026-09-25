@@ -8,6 +8,7 @@ import { authApi } from '../api/auth';
 import { useAuth } from './AuthContext';
 import { Spinner } from '../components/common/Spinner';
 import { auth, googleProvider, firebaseConfigured } from '../lib/firebase';
+import { isMagicLinkErrorCode, MAGIC_LINK_ERROR_MESSAGES } from '../lib/magicLinkFlow';
 
 /**
  * The local-only shortcut past sign-in, and the three things that keep it local.
@@ -72,8 +73,16 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
     setIsLocal(LOCAL_HOSTS.has(window.location.hostname));
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('auth_error') === 'coming_soon') {
+      const authError = params.get('auth_error');
+      if (authError === 'coming_soon') {
         setComingSoonEmail(params.get('email') || 'This account');
+      } else if (isMagicLinkErrorCode(authError)) {
+        // Fixed codes only, set by MagicLinkCallback.tsx — never the backend's raw error text.
+        setError(MAGIC_LINK_ERROR_MESSAGES[authError]);
+      } else if (params.get('error') === 'link_expired') {
+        // The old GET-consume route (cut over alongside this page) redirects here on an
+        // outstanding pre-cutover link — see Spigot-Algorand backend/src/routes/auth.ts.
+        setError(MAGIC_LINK_ERROR_MESSAGES.link_expired);
       }
     } catch {
       // ignore in environments without window.location

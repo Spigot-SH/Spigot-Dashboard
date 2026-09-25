@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { Schibsted_Grotesk, JetBrains_Mono } from 'next/font/google';
 import Providers from './providers';
+import { MAGIC_LINK_FRAGMENT_STASH_KEY } from '../lib/magicLinkFlow';
 import '../styles/index.css';
 
 /**
@@ -45,6 +47,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body>
+        {/*
+          Moves `#token=...&email=...` out of the URL and into sessionStorage before any other
+          script on the page runs — including the ones `Providers` below mounts (WalletProvider,
+          and Firebase, which `lib/firebase.ts` initializes as soon as its module loads).
+          `strategy="beforeInteractive"` is Next's own guarantee for exactly this: it inlines
+          the script into the HTML response and runs it before hydration and before any other
+          Next-managed script, so nothing gets a chance to read the fragment first. This is the
+          simplest option that actually runs first — no SDK config to audit, no per-route
+          opt-out to keep in sync as routes change; it is also gated to `/login/magic-link` by
+          the check inside it, so every other route is untouched.
+          MagicLinkCallback.tsx reads the stash and falls back to a live `location.hash` only if
+          this script did not run (e.g. a cached HTML shell from before this change).
+        */}
+        <Script id="magic-link-fragment-guard" strategy="beforeInteractive">
+          {`(function () {
+            try {
+              if (window.location.pathname === '/login/magic-link' && window.location.hash) {
+                window.sessionStorage.setItem(${JSON.stringify(MAGIC_LINK_FRAGMENT_STASH_KEY)}, window.location.hash);
+                window.history.replaceState(null, '', window.location.pathname + window.location.search);
+              }
+            } catch (e) {
+              // sessionStorage can throw (private mode, disabled storage). Leave the fragment
+              // where it is rather than lose the token; MagicLinkCallback.tsx falls back to it.
+            }
+          })();`}
+        </Script>
         <Providers>{children}</Providers>
       </body>
     </html>
