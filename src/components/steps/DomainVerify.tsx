@@ -1,7 +1,7 @@
 'use client';
 
 import type { OnboardingData } from '../../types/onboarding';
-import type { InitiationState } from '../../lib/domainVerification';
+import type { CheckStatus, InitiationState } from '../../lib/domainVerification';
 import { errorMessage as toMessage } from '../../lib/errors';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card } from '../common/Card';
@@ -13,6 +13,7 @@ import {
   initialInitiationState,
   startInitiation,
   applyInitiationOutcome,
+  computeDisplayStatus,
 } from '../../lib/domainVerification';
 import { Copy, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 
@@ -36,10 +37,13 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
   }, []);
 
   const [verifying, setVerifying] = useState<boolean>(false);
-  const [status, setStatus] = useState<'PENDING' | 'VERIFIED' | 'FAILED'>(
-    data.domainVerified ? 'VERIFIED' : 'PENDING',
-  );
+  // Only VERIFIED or FAILED are ever set directly, by checkVerification below. The badge/UI's
+  // actual displayed status also folds in whether a challenge has arrived yet
+  // (computeDisplayStatus) — see src/lib/domainVerification.ts for why PENDING must never be
+  // this state's own initial or default value (Codex round 4 regression).
+  const [status, setStatus] = useState<CheckStatus>(data.domainVerified ? 'VERIFIED' : 'IDLE');
   const [checkError, setCheckError] = useState('');
+  const displayStatus = computeDisplayStatus(status, initiation.phase);
 
   const domain = data.domain || 'example.com';
 
@@ -143,7 +147,17 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
             </div>
             <StatusBadge
               status={
-                status === 'VERIFIED' ? 'ONLINE' : status === 'FAILED' ? 'OFFLINE' : 'PENDING'
+                displayStatus === 'VERIFIED'
+                  ? 'ONLINE'
+                  : displayStatus === 'FAILED'
+                    ? 'OFFLINE'
+                    : displayStatus === 'PENDING'
+                      ? 'PENDING'
+                      : // IDLE: no challenge has arrived yet (still loading, or initiation
+                        // failed) — StatusBadge has no IDLE state of its own, and DRAFT is its
+                        // existing neutral "nothing to report yet" style, so it is reused rather
+                        // than claiming PENDING before that is true.
+                        'DRAFT'
               }
               className="px-3 py-1"
             />

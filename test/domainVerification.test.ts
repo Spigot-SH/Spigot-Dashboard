@@ -29,6 +29,7 @@ const {
   initialInitiationState,
   startInitiation,
   applyInitiationOutcome,
+  computeDisplayStatus,
 } = await import(modulePath);
 
 describe('isValidHostname', () => {
@@ -56,6 +57,16 @@ describe('isValidHostname', () => {
     assert.equal(isValidHostname(undefined), false);
     assert.equal(isValidHostname(null), false);
     assert.equal(isValidHostname(42), false);
+  });
+
+  test('accepts a label at exactly the 63-character DNS boundary', () => {
+    const label63 = 'a'.repeat(63);
+    assert.equal(isValidHostname(`${label63}.example.com`), true);
+  });
+
+  test('rejects a label one character past the 63-character DNS boundary', () => {
+    const label64 = 'a'.repeat(64);
+    assert.equal(isValidHostname(`${label64}.example.com`), false);
   });
 });
 
@@ -100,7 +111,8 @@ describe('sameHostname', () => {
 
 describe('validateChallengeResponse — regression: partial response must not enter PENDING', () => {
   // The backend's own value format: TXT_VALUE_PREFIX + crypto.randomBytes(32).toString('hex')
-  // (Spigot-Algorand/backend/src/routes/verification.ts) — 64 lowercase hex characters.
+  // (Spigot-Algorand/backend/src/routes/verification.ts) — 64 lowercase hex characters, returned
+  // both as the response's own top-level `challenge` field and folded into `record.value`.
   const HEX64 = 'ab'.repeat(32);
   const validValue = `x402-verification=${HEX64}`;
   const domain = 'api.example.com';
@@ -108,6 +120,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('accepts a complete, well-formed response', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: domain, value: validValue },
     };
     assert.deepEqual(validateChallengeResponse(res, domain), { ok: true });
@@ -116,6 +129,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('accepts a record name that differs only by case and a trailing dot', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: 'API.Example.com.', value: validValue },
     };
     assert.deepEqual(validateChallengeResponse(res, domain), { ok: true });
@@ -124,6 +138,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a TXT record for a different hostname than requested', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: 'evil.example.com', value: validValue },
     };
     const result = validateChallengeResponse(res, domain);
@@ -133,6 +148,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a subdomain that is not the exact hostname requested', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: 'www.api.example.com', value: validValue },
     };
     const result = validateChallengeResponse(res, domain);
@@ -140,13 +156,17 @@ describe('validateChallengeResponse — regression: partial response must not en
   });
 
   test('rejects a missing record name (the regression case)', () => {
-    const res = { id: 'v-1', record: { type: 'TXT', value: validValue } };
+    const res = { id: 'v-1', challenge: HEX64, record: { type: 'TXT', value: validValue } };
     const result = validateChallengeResponse(res, domain);
     assert.equal(result.ok, false);
   });
 
   test('rejects an empty record name', () => {
-    const res = { id: 'v-1', record: { type: 'TXT', name: '', value: validValue } };
+    const res = {
+      id: 'v-1',
+      challenge: HEX64,
+      record: { type: 'TXT', name: '', value: validValue },
+    };
     const result = validateChallengeResponse(res, domain);
     assert.equal(result.ok, false);
   });
@@ -154,6 +174,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a record name that is a URL with a path', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: 'https://api.example.com/v1', value: validValue },
     };
     const result = validateChallengeResponse(res, domain);
@@ -163,6 +184,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a record type other than TXT', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'CNAME', name: domain, value: validValue },
     };
     const result = validateChallengeResponse(res, domain);
@@ -172,6 +194,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a value that does not start with x402-verification=', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: domain, value: HEX64 },
     };
     const result = validateChallengeResponse(res, domain);
@@ -181,6 +204,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects an empty value — bare "x402-verification=" is not a challenge', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: domain, value: 'x402-verification=' },
     };
     const result = validateChallengeResponse(res, domain);
@@ -190,6 +214,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a value that is too short to be the backend challenge', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: domain, value: 'x402-verification=abc123' },
     };
     const result = validateChallengeResponse(res, domain);
@@ -199,6 +224,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a value with the right length but non-hex characters', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: domain, value: `x402-verification=${'z'.repeat(64)}` },
     };
     const result = validateChallengeResponse(res, domain);
@@ -208,6 +234,7 @@ describe('validateChallengeResponse — regression: partial response must not en
   test('rejects a value with extra trailing characters after the hex challenge', () => {
     const res = {
       id: 'v-1',
+      challenge: HEX64,
       record: { type: 'TXT', name: domain, value: `${validValue}extra` },
     };
     const result = validateChallengeResponse(res, domain);
@@ -215,19 +242,59 @@ describe('validateChallengeResponse — regression: partial response must not en
   });
 
   test('rejects a missing verification id', () => {
-    const res = { record: { type: 'TXT', name: domain, value: validValue } };
+    const res = { challenge: HEX64, record: { type: 'TXT', name: domain, value: validValue } };
     const result = validateChallengeResponse(res, domain);
     assert.equal(result.ok, false);
   });
 
   test('rejects a missing record entirely', () => {
-    const result = validateChallengeResponse({ id: 'v-1' }, domain);
+    const result = validateChallengeResponse({ id: 'v-1', challenge: HEX64 }, domain);
     assert.equal(result.ok, false);
   });
 
   test('rejects null/undefined input', () => {
     assert.equal(validateChallengeResponse(null, domain).ok, false);
     assert.equal(validateChallengeResponse(undefined, domain).ok, false);
+  });
+
+  // Codex round 4: a read-only probe against the shape-only check (prefix + 64 hex chars, with
+  // no cross-check against the response's own `challenge` field) returned `{ok:true}` for both
+  // cases below.
+  test('rejects a missing challenge field even when record.value looks well-formed', () => {
+    const res = { id: 'v-1', record: { type: 'TXT', name: domain, value: validValue } };
+    const result = validateChallengeResponse(res, domain);
+    assert.equal(result.ok, false);
+  });
+
+  test('rejects a record.value carrying a different, equally well-formed 64-hex challenge', () => {
+    const otherHex64 = 'cd'.repeat(32);
+    const res = {
+      id: 'v-1',
+      challenge: HEX64,
+      record: { type: 'TXT', name: domain, value: `x402-verification=${otherHex64}` },
+    };
+    const result = validateChallengeResponse(res, domain);
+    assert.equal(result.ok, false);
+  });
+
+  test('rejects a non-string challenge field', () => {
+    const res = {
+      id: 'v-1',
+      challenge: 12345,
+      record: { type: 'TXT', name: domain, value: validValue },
+    };
+    const result = validateChallengeResponse(res, domain);
+    assert.equal(result.ok, false);
+  });
+
+  test('rejects an empty-string challenge field', () => {
+    const res = {
+      id: 'v-1',
+      challenge: '',
+      record: { type: 'TXT', name: domain, value: 'x402-verification=' },
+    };
+    const result = validateChallengeResponse(res, domain);
+    assert.equal(result.ok, false);
   });
 });
 
@@ -367,5 +434,36 @@ describe('initiation retry state machine — regression: a 410 must never dead-e
     });
     assert.equal(after.phase, 'READY');
     assert.equal(after.challenge, okOutcome.challenge);
+  });
+});
+
+describe('computeDisplayStatus — regression: PENDING must never show before a challenge arrives', () => {
+  // Codex round 4 (follows up 814620a+3f972ac+4cf8279): DomainVerify.tsx's `status` used to
+  // default straight to 'PENDING' and never left it on a failed initiation. The previous
+  // (round-2) state was 'IDLE'; this is what restores that distinction, computed instead of
+  // stored so it cannot drift from the initiation state machine.
+
+  test('IDLE check status while still loading a challenge stays IDLE, not PENDING', () => {
+    assert.equal(computeDisplayStatus('IDLE', 'LOADING'), 'IDLE');
+  });
+
+  test('IDLE check status after a failed initiation stays IDLE, not PENDING', () => {
+    assert.equal(computeDisplayStatus('IDLE', 'ERROR'), 'IDLE');
+  });
+
+  test('IDLE check status becomes PENDING only once a challenge is READY', () => {
+    assert.equal(computeDisplayStatus('IDLE', 'READY'), 'PENDING');
+  });
+
+  test('VERIFIED short-circuits regardless of initiation phase', () => {
+    assert.equal(computeDisplayStatus('VERIFIED', 'LOADING'), 'VERIFIED');
+    assert.equal(computeDisplayStatus('VERIFIED', 'ERROR'), 'VERIFIED');
+    assert.equal(computeDisplayStatus('VERIFIED', 'READY'), 'VERIFIED');
+  });
+
+  test('FAILED short-circuits regardless of initiation phase', () => {
+    assert.equal(computeDisplayStatus('FAILED', 'LOADING'), 'FAILED');
+    assert.equal(computeDisplayStatus('FAILED', 'ERROR'), 'FAILED');
+    assert.equal(computeDisplayStatus('FAILED', 'READY'), 'FAILED');
   });
 });
