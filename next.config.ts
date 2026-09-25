@@ -64,8 +64,24 @@ const nextConfig: NextConfig = {
   /**
    * The app signs people in and moves money, so it must not be framed (clickjacking on
    * withdraw, settle or payout forms) and must not be sniffed or leak full URLs in Referer.
-   * The CSP deliberately limits only framing, <base>, plugins and form targets: a script/connect
-   * allowlist needs a browser test against Firebase, Google and WalletConnect first.
+   *
+   * Codex round 2 (follows up c3805b4): traced the Razorpay card flow in
+   * `src/credits/TopUpPanel.tsx` (`payByCard`, `RAZORPAY_SRC`) end to end. `new
+   * window.Razorpay(...).open()` renders Razorpay's payment UI, including card 3-D Secure and
+   * netbanking/UPI redirects, inside an iframe that Razorpay itself hosts and serves headers
+   * for — the dashboard document never submits a form to Razorpay or any other cross-origin
+   * target (the handler callback only calls our own `/api/credits/razorpay/verify-payment`), so
+   * `form-action 'self'` already covers it and needs no change. `grep -rn "iframe" src` finds
+   * none, so Razorpay is the only frame this app ever opens:
+   * - frame-src: checkout.razorpay.com and api.razorpay.com are where that overlay is served
+   *   from, both observed in Razorpay's own checkout.js.
+   * script-src and connect-src stay unset. `npm run build` fails in this checkout (`firebase`
+   * is not installed, matching the finding in c3805b4), so a script-src could not be verified
+   * against this app's own inline hydration scripts (Next's App Router streams React Server
+   * Component data via inline `<script>` tags, which an un-nonced script-src blocks) or against
+   * Firebase auth and the WalletConnect relay, both of which call out from this document same
+   * as Razorpay's checkout.js does. Locking either of those down needs the browser-tested pass
+   * this file already called for.
    */
   async headers() {
     return [
@@ -74,7 +90,9 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+            value:
+              "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'; " +
+              'frame-src https://checkout.razorpay.com https://api.razorpay.com',
           },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000' },
