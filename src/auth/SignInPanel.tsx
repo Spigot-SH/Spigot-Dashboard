@@ -7,7 +7,7 @@ import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { authApi } from '../api/auth';
 import { useAuth } from './AuthContext';
 import { Spinner } from '../components/common/Spinner';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, googleProvider, firebaseConfigured } from '../lib/firebase';
 
 /**
  * The local-only shortcut past sign-in, and the three things that keep it local.
@@ -81,6 +81,10 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
   }, []);
 
   const handleGoogleSignIn = async () => {
+    if (!firebaseConfigured) {
+      setError('Google sign-in is not configured on this deploy.');
+      return;
+    }
     setBusy('google');
     setError(null);
     setComingSoonEmail(null);
@@ -342,7 +346,8 @@ export const SignInPanel: React.FC<SignInPanelProps> = ({ onSignedIn }) => {
           <button
             type="button"
             onClick={handleGoogleSignIn}
-            disabled={busy !== null}
+            disabled={busy !== null || !firebaseConfigured}
+            title={firebaseConfigured ? undefined : 'Google sign-in is not configured on this deploy.'}
             className={`${quietButton} mb-3`}
           >
             {busy === 'google' ? <Spinner size={16} /> : <GoogleMark />} Continue with Google
