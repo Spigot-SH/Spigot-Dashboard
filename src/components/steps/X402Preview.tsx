@@ -7,6 +7,7 @@ import { Button } from '../common/Button';
 import { ArrowRight, DollarSign, Globe, Server } from 'lucide-react';
 import { ApiEndpoint } from '../../api/client';
 import { Table, Th, Td } from '../common/Table';
+import { normalizeEndpointPath } from '../../lib/gatewayUrl';
 
 interface X402PreviewProps {
   data: OnboardingData;
@@ -68,7 +69,7 @@ const X402Preview: React.FC<X402PreviewProps> = ({ data, onNext, onBack }) => {
                         <>
                           <span className="text-xs mr-2">{ep.method}</span>
                           {gatewayDomain}/x402/{apiIdSlug}
-                          {ep.path}
+                          {normalizeEndpointPath(ep.path)}
                         </>
                       ) : (
                         <span className="text-muted">
@@ -101,7 +102,7 @@ const X402Preview: React.FC<X402PreviewProps> = ({ data, onNext, onBack }) => {
                   <span className="text-muted">curl</span> -X {sampleEndpoint.method}{' '}
                   {gatewayDomain}
                   /x402/{apiIdSlug}
-                  {sampleEndpoint.path} \ -H{' '}
+                  {normalizeEndpointPath(sampleEndpoint.path)} \ -H{' '}
                   <span className="text-accent-dim">
                     &quot;Content-Type: application/json&quot;
                   </span>{' '}

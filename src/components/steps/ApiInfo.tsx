@@ -8,6 +8,7 @@ import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { apiClient, type AuthConfig } from '../../api/client';
+import { isValidSlug } from '../../lib/gatewayUrl';
 
 interface ApiInfoProps {
   data: OnboardingData;
@@ -78,7 +79,10 @@ const ApiInfo: React.FC<ApiInfoProps> = ({ data, updateData, onNext, onBack }) =
             : undefined,
         });
 
-        updateData({ apiId: result.id, apiSlug: result.slug || result.id });
+        // No ID fallback: a partial create response with an id but no valid slug must leave
+        // apiSlug unset so the preview and dashboard show no gateway URL, rather than build one
+        // from the id that 404s against gateway.ts (which resolves on slug, not id).
+        updateData({ apiId: result.id, apiSlug: isValidSlug(result.slug) ? result.slug : undefined });
         onNext();
       } catch (err) {
         console.error('Failed to create API:', err);

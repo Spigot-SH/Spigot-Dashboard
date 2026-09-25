@@ -7,6 +7,17 @@ import { Button } from '../common/Button';
 import { Table, Th, Td, TdEmpty } from '../common/Table';
 import { DashboardStats, DashboardEndpointRow } from '../../api/client';
 import { Server, Plus, Copy, Check, ExternalLink } from 'lucide-react';
+import { buildPublishedGatewayUrl } from '../../lib/gatewayUrl';
+
+/**
+ * `DashboardEndpointRow` (src/api/client.ts) has no status field: the dashboard endpoints
+ * query (Spigot-Algorand/backend/src/routes/dashboard.ts, `endpoints` query, ~line 132-142)
+ * does not select `apis.status`. Read it defensively under an extended type so this still
+ * works once that field is added, without widening the shared row type here (owned by another
+ * change). Until the backend adds it, `api_status` is always undefined and every row fails
+ * closed to no URL — see buildPublishedGatewayUrl in ../../lib/gatewayUrl.
+ */
+type EndpointRowWithStatus = DashboardEndpointRow & { api_status?: string; status?: string };
 
 interface ApisViewProps {
   stats: DashboardStats;
@@ -110,10 +121,17 @@ export const ApisView: React.FC<ApisViewProps> = ({ stats, publisherId: _publish
               filteredEndpoints.map((ep: DashboardEndpointRow, i: number) => {
                 const epPath = ep.path || '/';
                 const epMethod = ep.method || 'GET';
-                // The backend routes on `{origin}/x402/{apiSlug}{endpointPath}`
-                // (Spigot-Algorand/backend/src/routes/gateway.ts:38-42). Without the slug there
-                // is no real URL to show, so leave it blank rather than build a 404.
-                const fullProxyUrl = ep.api_slug ? `${gatewayBase}/x402/${ep.api_slug}${epPath}` : null;
+                // The backend routes on `{origin}/x402/{apiSlug}{endpointPath}` and 404s unless
+                // the API is PUBLISHED (Spigot-Algorand/backend/src/routes/gateway.ts:48-50).
+                // Without a valid slug, or without a confirmed PUBLISHED status, there is no
+                // real URL to show — leave it blank rather than build one that 404s.
+                const epWithStatus = ep as EndpointRowWithStatus;
+                const fullProxyUrl = buildPublishedGatewayUrl(
+                  gatewayBase,
+                  ep.api_slug,
+                  epPath,
+                  epWithStatus.api_status ?? epWithStatus.status,
+                );
                 const isCopied = copiedPath === epPath;
 
                 return (
