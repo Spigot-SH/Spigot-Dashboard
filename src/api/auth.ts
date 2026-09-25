@@ -111,6 +111,13 @@ export const authApi = {
       },
     ),
 
+  /** Called from `/login/magic-link`, which reads the token out of the URL fragment. */
+  verifyMagicLink: (email: string, token: string) =>
+    request<{ ok: true }>('/auth/magic-link/callback', {
+      method: 'POST',
+      body: JSON.stringify({ email, token }),
+    }),
+
   checkWhitelist: (email: string) =>
     request<{ whitelisted: boolean; comingSoon?: boolean; error?: string }>(
       `/auth/whitelist/check?email=${encodeURIComponent(email)}`,
