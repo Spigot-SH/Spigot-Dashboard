@@ -1,4 +1,22 @@
 import { parseCheckResponse } from '../lib/domainVerification';
+import {
+  parseRegisteredPublisher,
+  parseCodeRequestResult,
+  parseIssuedKey,
+  parsePublisherKeyInfo,
+  type PublisherKeyInfo,
+} from '../lib/apiKeyRotation';
+
+// setPublisherId/getPublisherId/clearAuth/clearLegacyApiKey live in ../lib/apiKeyStorage and are
+// re-exported below — see that file for why (Node's own module loader cannot follow this file's
+// own extension-less `../lib/domainVerification` import, so this file cannot be loaded directly
+// by test/legacyApiKey.test.ts; the storage helpers were pulled out so they can be).
+export {
+  setPublisherId,
+  getPublisherId,
+  clearAuth,
+  clearLegacyApiKey,
+} from '../lib/apiKeyStorage';
 
 /**
  * Always the relative '/api', which next.config.ts rewrites to the Express backend.
@@ -7,38 +25,6 @@ import { parseCheckResponse } from '../lib/domainVerification';
  * so a cross-origin XHR would not send it. There is deliberately no override.
  */
 export const BASE_URL = '/api';
-// Publisher calls authenticate with the httpOnly session cookie only. The API key is for
-// server-to-server use; the browser never stores or sends it. This name is kept only so
-// clearAuth() can delete a key saved by an older build.
-const API_KEY_STORAGE_KEY = 'x402_api_key';
-const PUBLISHER_ID_STORAGE_KEY = 'x402_publisher_id';
-
-export function setPublisherId(id: string): void {
-  localStorage.setItem(PUBLISHER_ID_STORAGE_KEY, id);
-}
-
-export function getPublisherId(): string | null {
-  return localStorage.getItem(PUBLISHER_ID_STORAGE_KEY);
-}
-
-export function clearAuth(): void {
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
-  localStorage.removeItem(PUBLISHER_ID_STORAGE_KEY);
-}
-
-/**
- * Delete a key an older build left in localStorage, on load — not only at sign-out. A
- * browser that is already signed in when it upgrades to this build never fires sign-out, so
- * that alone left the key sitting there indefinitely. Safe to call before a session exists:
- * it only touches storage.
- */
-export function clearLegacyApiKey(): void {
-  try {
-    localStorage.removeItem(API_KEY_STORAGE_KEY);
-  } catch {
-    // Storage can throw (private mode, disabled storage) — nothing to clean up then.
-  }
-}
 
 // --- Types ---
 export interface Publisher {
@@ -252,7 +238,12 @@ export interface SettleResult {
 
 // --- API Client ---
 export const apiClient = {
-  async registerPublisher(data: Partial<Publisher>): Promise<Publisher> {
+  /**
+   * Rejects a malformed success body ({}  , `{id: 123}`, `{id: ''}`) rather than handing a
+   * caller an id that is not actually a valid string — BasicInfo.tsx, Start.tsx and
+   * SettingsView.tsx all advance on nothing more than `result.id`.
+   */
+  async registerPublisher(data: Partial<Publisher>): Promise<{ id: string }> {
     const res = await fetch(`${BASE_URL}/publishers`, {
       method: 'POST',
       credentials: 'include',
@@ -271,28 +262,31 @@ export const apiClient = {
         },
       );
     }
-    return body;
+    const parsed = parseRegisteredPublisher(body);
+    if (!parsed) throw new Error('Server returned no publisher');
+    return parsed;
   },
 
   /**
    * Sends the emailed step-up code that `rotateApiKey` requires. A session cookie alone must
    * not be enough to mint or read a key, so issuing or rotating one is a two-step call: this
    * one, then `rotateApiKey` with the code it emails.
+   *
+   * Throws unless the backend's body confirms `codeSent: true` — the one signal that the mail
+   * provider actually accepted the message (Spigot-Algorand routes/publishers.ts). A 200/202
+   * with a missing, false or malformed `codeSent` must not be read as "a code is on its way":
+   * the caller's next step is to show a code-entry field for a code that may not exist.
    */
-  async requestApiKeyCode(): Promise<{ codeSent: boolean; message: string }> {
+  async requestApiKeyCode(): Promise<{ codeSent: true; message: string }> {
     const res = await fetch(`${BASE_URL}/publishers/api-key/request-code`, {
       method: 'POST',
       credentials: 'include',
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.error || 'Could not send a verification code');
-    return {
-      codeSent: Boolean(body?.codeSent),
-      message:
-        typeof body?.message === 'string' && body.message
-          ? body.message
-          : 'We emailed a verification code.',
-    };
+    const parsed = parseCodeRequestResult(body);
+    if (!parsed) throw new Error('The server did not confirm a code was sent');
+    return parsed;
   },
 
   /**
@@ -301,12 +295,16 @@ export const apiClient = {
    * other tab or device that had it. `signal` lets a caller give up waiting for a slow
    * response without leaving the request itself unresolved server-side — rotation is a single
    * atomic UPDATE, so a request that times out client-side may still have committed.
+   *
+   * Rejects a missing/non-string key, a non-matching or invalid publisher id, and a
+   * non-string `apiKeyRotatedAt` — a caller must never show a key from a response that does
+   * not actually prove it belongs to the publisher and rotation it asked for.
    */
   async rotateApiKey(
     publisherId: string,
     confirmationCode: string,
     signal?: AbortSignal,
-  ): Promise<{ id: string; api_key: string }> {
+  ): Promise<{ id: string; api_key: string; apiKeyRotatedAt: string | null }> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/api-key`, {
       method: 'POST',
       credentials: 'include',
@@ -316,7 +314,27 @@ export const apiClient = {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.error || 'Could not issue a new key');
-    return body;
+    const parsed = parseIssuedKey(body, publisherId);
+    if (!parsed) throw new Error('Server returned no key');
+    return parsed;
+  },
+
+  /**
+   * The read-only rotation marker (`apiKeyRotatedAt`) a publisher currently has, with no
+   * secret in the response. Used to derive Start.tsx's "Get your API key" completion and, in
+   * SettingsView's key pane, to re-check before revealing or copying a key that a later
+   * rotation — in another tab or device — may have already revoked
+   * (src/lib/apiKeyRotation.ts, `keyMatchesServerMarker`).
+   */
+  async getPublisherKeyInfo(publisherId: string): Promise<PublisherKeyInfo> {
+    const res = await fetch(`${BASE_URL}/publishers/${publisherId}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(`Could not check the API key status (${res.status})`);
+    const body = await res.json().catch(() => ({}));
+    const parsed = parsePublisherKeyInfo(body);
+    if (!parsed) throw new Error('Server returned a malformed publisher record');
+    return parsed;
   },
 
   async initiateVerification(domain: string): Promise<{

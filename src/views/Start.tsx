@@ -11,12 +11,16 @@ import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../lib/errors';
 import { ProviderAccessLockedCard } from '../components/dashboard/ProviderAccessLockedCard';
 import { runProviderAccessRequestFlow } from './providerAccessFlow';
+import { deriveKeyIssuedState } from '../lib/apiKeyRotation';
 
 /** What the backend says about this publisher. null means the check has not answered yet. */
 interface Progress {
   endpoints: number;
   paidCalls: number;
   hasWallet: boolean;
+  /** The rotation marker apiClient.getPublisherKeyInfo reports — null means no key has ever
+   * actually been issued to this publisher (registration's own key is never shown). */
+  apiKeyRotatedAt: string | null;
 }
 
 const VOLUME_COPY = {
@@ -73,13 +77,24 @@ export default function Start() {
   useEffect(() => {
     if (!publisher) return;
     let live = true;
-    Promise.all([apiClient.getDashboard(publisher.id), apiClient.getWallet(publisher.id)])
-      .then(([stats, wallet]) => {
+    Promise.all([
+      apiClient.getDashboard(publisher.id),
+      apiClient.getWallet(publisher.id),
+      // The read-only rotation marker — null when no key has ever actually been issued to this
+      // publisher, distinct from a publisher row always carrying registration's never-shown
+      // placeholder key. A failed check here must not silently read as "done": if this call
+      // fails while the other two succeed, the whole Promise.all rejects and the catch below
+      // sets `error`, which is what makes every step render "Could not check." rather than a
+      // guessed answer for just this one.
+      apiClient.getPublisherKeyInfo(publisher.id),
+    ])
+      .then(([stats, wallet, keyInfo]) => {
         if (!live) return;
         setProgress({
           endpoints: stats.endpoints?.length ?? 0,
           paidCalls: stats.transactions?.length ?? 0,
           hasWallet: Boolean(wallet),
+          apiKeyRotatedAt: keyInfo.apiKeyRotatedAt,
         });
         setError(null);
       })
@@ -94,8 +109,9 @@ export default function Start() {
     setError(null);
     try {
       const name = user?.email ? user.email.split('@')[0] : 'My Publisher';
+      // apiClient.registerPublisher already rejects a malformed body (missing/non-string id)
+      // and throws, so `created.id` here is guaranteed a valid string.
       const created = await apiClient.registerPublisher({ name });
-      if (!created.id) throw new Error('Server returned no publisher');
       setPublisherId(created.id);
       await refresh();
     } catch (e: unknown) {
@@ -150,7 +166,11 @@ export default function Start() {
     {
       key: 'key',
       title: 'Get your API key',
-      done: Boolean(publisher),
+      // Done only once the backend confirms a key was actually issued (apiKeyRotatedAt, from
+      // POST /publishers/:id/api-key) — registration mints a row but never hands out a usable
+      // key, so `Boolean(publisher)` alone read this step Done for a publisher that had never
+      // gotten one. Unknown (null) until that check comes back, the same as the steps below.
+      done: deriveKeyIssuedState(Boolean(publisher), progress?.apiKeyRotatedAt),
       todo: 'Issuing a key needs an emailed confirmation code, from Settings.',
       // No key is ever handed out here or at registration — it needs the emailed step-up
       // code, which the key pane in Settings runs. "Reveal and copy" promised a key that

@@ -23,6 +23,14 @@ import Link from 'next/link';
 import { Select } from '../common/Select';
 import { consoleFallback, useConsoleView } from '../../lib/consoleView';
 import { useTheme } from '../../lib/theme';
+import {
+  canResendCode,
+  isRotationBroadcast,
+  keyMatchesServerMarker,
+  rotationChannelName,
+  shouldInvalidateOnBroadcast,
+  type RotationBroadcast,
+} from '../../lib/apiKeyRotation';
 
 interface SettingsViewProps {
   publisherId: string;
@@ -125,8 +133,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
   // cannot be shown again after this page is left, and another tab's response never writes
   // into this state.
   const [apiKey, setApiKeyState] = useState<string | null>(null);
+  // The apiKeyRotatedAt this tab's own key (above) was issued with — the rotation marker,
+  // never the key itself. A ref, not state: nothing renders from it directly, it only needs to
+  // be read synchronously inside the BroadcastChannel handler and the pre-reveal check below,
+  // and a ref never goes stale between a render and an async callback the way a captured state
+  // value can.
+  const ownKeyMarker = useRef<string | null>(null);
+  // This publisher's cross-tab rotation channel (opened below), so a successful rotation can
+  // tell this browser's other tabs immediately instead of waiting for their next reveal
+  // attempt.
+  const rotationChannel = useRef<BroadcastChannel | null>(null);
   const [generating, setGenerating] = useState(false);
   const [confirmingKey, setConfirmingKey] = useState(false);
+  const [verifyingKey, setVerifyingKey] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   // Set once the emailed step-up code has been requested; cleared on success or on starting
   // over. A session cookie alone cannot mint or read a key, so getting one is always this
@@ -188,6 +207,79 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       live = false;
     };
   }, [publisher?.id]);
+
+  /**
+   * Clears whatever key this tab is holding and shows why — used by the BroadcastChannel
+   * listener below and by the pre-reveal check further down. Never partial: a key that is no
+   * longer provably current must not linger in `showKey`/`apiKey` state in any form.
+   */
+  const revokeShownKey = (message: string) => {
+    setApiKeyState(null);
+    ownKeyMarker.current = null;
+    setShowKey(false);
+    setGenError(message);
+  };
+
+  /**
+   * Same-browser rotations invalidate a held key immediately, instead of waiting for the next
+   * reveal/copy attempt. Scoped to this publisher's own channel (`rotationChannelName`) so
+   * switching accounts in one tab cannot revoke a key genuinely still current for a different
+   * publisher open in another tab. A rotation from a *different device* has no channel to ride
+   * on — that case is caught by the pre-reveal server check in `verifyKeyStillCurrent` below,
+   * not by this listener.
+   */
+  useEffect(() => {
+    const pubId = publisher?.id;
+    if (!pubId || typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(rotationChannelName(pubId));
+    const onMessage = (event: MessageEvent) => {
+      if (!isRotationBroadcast(event.data, pubId)) return;
+      if (shouldInvalidateOnBroadcast(ownKeyMarker.current, event.data.rotatedAt)) {
+        revokeShownKey('This key was rotated in another tab, and is now revoked. Get a new one.');
+      }
+    };
+    channel.addEventListener('message', onMessage);
+    rotationChannel.current = channel;
+    return () => {
+      channel.removeEventListener('message', onMessage);
+      channel.close();
+      rotationChannel.current = null;
+    };
+  }, [publisher?.id]);
+
+  /**
+   * The rotation contract's enforcement point: before a key already shown in this tab is
+   * revealed or copied, re-check the live server marker
+   * (`GET /publishers/:id`, `apiClient.getPublisherKeyInfo`) against the marker this tab's key
+   * was issued with. A later rotation — another tab (usually already caught above by the
+   * broadcast), another device, or this tab's own retry after a lost response — changes the
+   * server's marker, and `keyMatchesServerMarker` fails closed on anything but an exact match,
+   * including a failed check itself. Returns whether the key already held may still be used.
+   */
+  const verifyKeyStillCurrent = async (): Promise<boolean> => {
+    if (!currentApiKey || !publisher?.id) return false;
+    setVerifyingKey(true);
+    try {
+      const info = await apiClient.getPublisherKeyInfo(publisher.id);
+      if (keyMatchesServerMarker(ownKeyMarker.current, info.apiKeyRotatedAt)) return true;
+      revokeShownKey('This key was rotated elsewhere, and is now revoked. Get a new one.');
+      return false;
+    } catch (e: unknown) {
+      // Could not confirm the key is still current — fail closed, the same as a mismatch.
+      revokeShownKey(errorMessage(e, 'Could not confirm this key is still current. Get a new one.'));
+      return false;
+    } finally {
+      setVerifyingKey(false);
+    }
+  };
+
+  const revealKey = async () => {
+    if (await verifyKeyStillCurrent()) setShowKey(true);
+  };
+
+  const copyApiKey = async () => {
+    if ((await verifyKeyStillCurrent()) && currentApiKey) copy('key', currentApiKey);
+  };
 
   const savePayout = async () => {
     const address = payoutAddress.trim();
@@ -256,19 +348,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
    * step-up code. A key is issued only after that code comes back, in `confirmKey`.
    */
   const requestKey = async () => {
+    // Resend, while a confirmation is already running, would issue a fresh code and supersede
+    // the one that confirm is about to submit (services/keyStepUp.ts invalidates the previous
+    // code on every reissue) — the button is disabled for this (`canResendCode`, below), but
+    // guard the handler itself too, since it is also this pane's first "Get key" action.
+    if (!canResendCode(generating, confirmingKey)) return;
     setGenerating(true);
     setGenError(null);
     try {
       let pubId = publisher?.id;
       if (!pubId) {
+        // apiClient.registerPublisher already rejects a malformed body (missing/non-string id)
+        // and throws, so a caller here never has to re-validate `created.id` itself.
         const created = await apiClient.registerPublisher({
           name: user?.email ? user.email.split('@')[0] : 'My Publisher',
         });
-        if (!created?.id) throw new Error('Server returned no publisher');
         setPublisherId(created.id);
         await refresh();
         pubId = created.id;
       }
+      // Throws unless the backend confirmed codeSent: true (apiClient.requestApiKeyCode) — a
+      // malformed or incomplete "success" body never reaches setCodeRequested(true) below.
       await apiClient.requestApiKeyCode();
       setCodeRequested(true);
     } catch (e: unknown) {
@@ -304,12 +404,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
+      // apiClient.rotateApiKey already rejects a missing/non-string key, a non-matching or
+      // invalid publisher id, and a malformed apiKeyRotatedAt, so `result` here is guaranteed
+      // well-formed.
       const result = await apiClient.rotateApiKey(pubId, code, controller.signal);
-      if (!result.api_key || !result.id) throw new Error('Server returned no key');
       setApiKeyState(result.api_key);
+      ownKeyMarker.current = result.apiKeyRotatedAt;
       setShowKey(true);
       setCodeRequested(false);
       setStepUpCode('');
+      // Tell this browser's other tabs immediately — without this, a tab holding an older key
+      // only learns it is stale the next time it tries to reveal or copy it.
+      if (result.apiKeyRotatedAt) {
+        const broadcast: RotationBroadcast = { publisherId: pubId, rotatedAt: result.apiKeyRotatedAt };
+        rotationChannel.current?.postMessage(broadcast);
+      }
       await refresh();
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') {
@@ -593,7 +702,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setShowKey(!showKey)}
+                    onClick={() => (showKey ? setShowKey(false) : void revealKey())}
+                    disabled={verifyingKey}
                     className={iconButton}
                     title={showKey ? 'Hide key' : 'Reveal key'}
                   >
@@ -601,7 +711,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => copy('key', currentApiKey)}
+                    onClick={() => void copyApiKey()}
+                    disabled={verifyingKey}
                     className={iconButton}
                     title="Copy key"
                   >
@@ -638,7 +749,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                   <button
                     type="button"
                     onClick={requestKey}
-                    disabled={generating}
+                    // Disabled while a request is already in flight, and while confirmation is
+                    // running: resending mid-confirmation issues a fresh code that supersedes
+                    // the one the in-flight confirm is about to submit, which would fail that
+                    // submission for a reason the caller never sees coming.
+                    disabled={!canResendCode(generating, confirmingKey)}
                     className="cursor-pointer border-0 bg-transparent p-0 text-xs text-muted underline disabled:cursor-default"
                   >
                     Resend code
