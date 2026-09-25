@@ -50,3 +50,58 @@ describe('buildContentSecurityPolicy', () => {
     assert.match(csp, /(^|; )frame-ancestors 'none'(;|$)/);
   });
 });
+
+describe('buildContentSecurityPolicy — regression: a malformed auth domain must not widen the policy', () => {
+  // The CSP grammar splits a directive's value on whitespace into separate sources and starts a
+  // new directive on ";" — a naive string splice trusted the env var to already be one bare
+  // hostname. A read-only check against the pre-fix code produced a policy allowing
+  // https://evil.example from a value containing a space (Codex round 4, follows up
+  // c3805b4+dac9c95+c91b585).
+
+  test('a value with an embedded space does not add the extra origin', () => {
+    const csp = buildContentSecurityPolicy({
+      firebaseAuthDomain: 'evil.example spigot-dashboard.firebaseapp.com',
+    });
+    assert.doesNotMatch(csp, /evil\.example/);
+    // The whole malformed value is dropped, not split and half-trusted — the env var as
+    // configured is not the one hostname it must be.
+    assert.doesNotMatch(csp, /firebaseapp\.com/);
+  });
+
+  test('a value carrying a second directive is dropped entirely', () => {
+    const csp = buildContentSecurityPolicy({
+      firebaseAuthDomain: "x402.firebaseapp.com; script-src 'unsafe-inline'",
+    });
+    assert.doesNotMatch(csp, /unsafe-inline/);
+    assert.doesNotMatch(csp, /firebaseapp\.com/);
+    // No second "script-src" directive was introduced.
+    assert.equal((csp.match(/script-src/g) || []).length, 0);
+  });
+
+  test('a value with a comma-separated second host does not add either origin', () => {
+    const csp = buildContentSecurityPolicy({
+      firebaseAuthDomain: 'spigot-dashboard.firebaseapp.com,evil.example',
+    });
+    assert.doesNotMatch(csp, /evil\.example/);
+    assert.doesNotMatch(csp, /firebaseapp\.com/);
+  });
+
+  test('a bare wildcard is rejected', () => {
+    const csp = buildContentSecurityPolicy({ firebaseAuthDomain: '*' });
+    assert.doesNotMatch(csp, /frame-src[^;]*\*/);
+  });
+
+  test('a value with a scheme or path is rejected', () => {
+    const csp = buildContentSecurityPolicy({
+      firebaseAuthDomain: 'https://spigot-dashboard.firebaseapp.com/x',
+    });
+    assert.doesNotMatch(csp, /firebaseapp\.com/);
+  });
+
+  test('a valid hostname is still allowed through unchanged', () => {
+    const csp = buildContentSecurityPolicy({
+      firebaseAuthDomain: 'spigot-dashboard.firebaseapp.com',
+    });
+    assert.match(csp, /frame-src[^;]*https:\/\/spigot-dashboard\.firebaseapp\.com(\s|$)/);
+  });
+});

@@ -104,6 +104,15 @@ const nextConfig: NextConfig = {
    * `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` newly set did not change the served header; rebuilding
    * did), same as `BACKEND_ORIGIN` below — the auth domain must be set before `npm run build`,
    * not just before `npm start` or at deploy restart.
+   *
+   * Codex round 4 (follows up c3805b4+dac9c95+c91b585): `buildContentSecurityPolicy` now
+   * rejects a `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` that is not a single bare hostname (whitespace,
+   * `;`, `,`, a scheme or a path all fail closed instead of splicing into frame-src — see
+   * src/lib/csp.ts and test/csp.test.ts) before this function embeds it in the header. Still
+   * unresolved and not closed by this round, same limitation prior rounds recorded: an actual
+   * Razorpay payment through 3-D Secure/UPI/netbanking redirects and an actual Google popup
+   * sign-in through session creation, both under this served header, need a live Razorpay
+   * account and a configured Firebase project (`.env.local`) that this checkout does not have.
    */
   async headers() {
     return [

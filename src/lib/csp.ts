@@ -62,10 +62,34 @@
  * either directive is separate work that needs its own browser-tested pass (building and
  * running this app needed `npm ci` for `firebase`, which was not installed in the checkout
  * either round 1 or round 2 judged).
+ *
+ * Codex round 4 (follows up c3805b4+dac9c95+c91b585): `env.firebaseAuthDomain` is
+ * `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, an env var, spliced into `frame-src` with no validation.
+ * The CSP grammar splits a directive's value on whitespace into separate source expressions, so
+ * a value containing a space — `"evil.example x402.firebaseapp.com"` — did not become one
+ * (malformed) origin, it became *two* frame-src sources, one of them `https://evil.example`, an
+ * origin this file never intended to allow. A value containing `;` similarly does not stay
+ * inside frame-src at all: everything after it is a second directive, letting a misconfigured
+ * or attacker-influenced env var widen the policy past frame-src, e.g.
+ * `"x.test; script-src 'unsafe-inline'"`. `isSingleHostname` rejects anything that is not
+ * exactly one well-formed DNS hostname — no whitespace, no `;`, `,`, `/`, or other CSP/URL
+ * separators — before it is trusted as a frame-src origin; an invalid value is dropped instead
+ * of shipped, so a bad env var fails closed (Google sign-in's helper iframe stays blocked, the
+ * same safe state as `firebaseAuthDomain` being unset) rather than widening the header. See
+ * test/csp.test.ts for the malformed-value cases (embedded space, `;`, `,`, wildcard).
  */
+
+/** A bare DNS hostname — no scheme, path, port, query string, or CSP source-list separators
+ *  (space, `;`, `,`). This is what `frame-src` may safely interpolate a single trusted origin
+ *  from: the CSP header is itself just a string, so anything that is not exactly one hostname
+ *  risks being parsed as extra directives or extra sources instead of the one origin intended. */
+function isSingleHostname(value: string): boolean {
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(value);
+}
+
 export function buildContentSecurityPolicy(env: { firebaseAuthDomain?: string }): string {
   const frameSrcOrigins = ['https://api.razorpay.com'];
-  if (env.firebaseAuthDomain) {
+  if (env.firebaseAuthDomain && isSingleHostname(env.firebaseAuthDomain)) {
     frameSrcOrigins.push(`https://${env.firebaseAuthDomain}`);
   }
 
