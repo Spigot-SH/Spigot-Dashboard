@@ -109,16 +109,21 @@ export const ApisView: React.FC<ApisViewProps> = ({ stats, publisherId: _publish
           <tbody>
             {filteredEndpoints.length > 0 ? (
               filteredEndpoints.map((ep: DashboardEndpointRow, i: number) => {
+                // Display fallback only: never feed this into the URL builder below. An empty
+                // stored path (the importer can leave one behind — see gatewayUrl.ts's
+                // isRoutablePath) is not the same as a stored "/", and defaulting it here first
+                // would hide that from buildPublishedGatewayUrl's check.
                 const epPath = ep.path || '/';
                 const epMethod = ep.method || 'GET';
                 // The backend routes on `{origin}/x402/{apiSlug}{endpointPath}` and 404s unless
-                // the API is PUBLISHED (Spigot-Algorand/backend/src/routes/gateway.ts:48-50).
-                // Without a valid slug, or without a confirmed PUBLISHED status, there is no
-                // real URL to show — leave it blank rather than build one that 404s.
+                // the API is PUBLISHED (Spigot-Algorand/backend/src/routes/gateway.ts:48-50), and
+                // only when the *raw stored* path is one it can match (gateway.ts:39-44, 55-60).
+                // Without a valid slug, a routable stored path, or a confirmed PUBLISHED status,
+                // there is no real URL to show — leave it blank rather than build one that 404s.
                 const fullProxyUrl = buildPublishedGatewayUrl(
                   gatewayBase,
                   ep.api_slug,
-                  epPath,
+                  ep.path,
                   ep.api_status,
                 );
                 const isCopied = copiedPath === epPath;
