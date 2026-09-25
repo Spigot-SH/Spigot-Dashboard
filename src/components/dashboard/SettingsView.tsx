@@ -461,6 +461,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       // so `result` here is guaranteed well-formed.
       const result = await apiClient.rotateApiKey(pubId, code, controller.signal);
       if (ownedUserId.current !== startedForUserId) return; // account switched mid-confirm
+
+      // Verify this call's own response against a fresh server read before ever displaying it
+      // — Codex round-3 rejection, f20dr3: "verify a rotation response against the server
+      // before displaying its key. Test two successful rotations whose responses arrive in
+      // reverse order." Two devices (no shared BroadcastChannel between them) can both commit a
+      // rotation around the same time; this call's own response only proves *its* rotation
+      // committed, not that it is still the newest one by the time this tab is about to act on
+      // it. A failed re-check does not itself prove staleness — the rotation this call asked
+      // for did succeed — so it shows the key rather than silently discarding a real result;
+      // the pre-reveal check in verifyKeyStillCurrent still applies before anyone can actually
+      // read or copy it.
+      let supersededVersion: number | null = null;
+      try {
+        const info = await apiClient.getPublisherKeyInfo(pubId);
+        if (!keyMatchesServerMarker(result.apiKeyVersion, info.apiKeyVersion)) {
+          supersededVersion = info.apiKeyVersion;
+        }
+      } catch {
+        // Could not confirm — proceed; see comment above.
+      }
+      if (ownedUserId.current !== startedForUserId) return; // account switched during the re-check
+
+      if (supersededVersion !== null) {
+        revokeShownKey(
+          'Another rotation already replaced this key before it could be shown. Get a new one.',
+        );
+        return;
+      }
+
       setApiKeyState(result.api_key);
       ownKeyVersion.current = result.apiKeyVersion;
       setShowKey(true);
