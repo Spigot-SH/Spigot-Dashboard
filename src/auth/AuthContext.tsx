@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi, SessionState, AuthUser, PublisherInfo, WalletInfo, Balances } from '../api/auth';
 import { clearAuth, clearLegacyApiKey } from '../api/client';
+import { SIGNED_OUT_STATE, parseSessionState } from './sessionState';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -15,7 +16,14 @@ interface AuthContextValue {
   tutorialUnlocked: boolean;
   loading: boolean;
   signedIn: boolean;
-  refresh: () => Promise<void>;
+  /**
+   * Returns the freshly fetched session, not just the applied state — a caller that must act
+   * on the result right after calling this (e.g. "only open the tutorial once the ledger
+   * confirms the unlock") cannot read `tutorialUnlocked` from this context afterward and trust
+   * it: `setState` above has not necessarily re-rendered yet, so that value can still be the
+   * one from before the call.
+   */
+  refresh: () => Promise<SessionState>;
   signOut: () => Promise<void>;
   openSignIn: () => void;
   closeSignIn: () => void;
@@ -36,21 +44,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [signInOpen, setSignInOpen] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<SessionState> => {
+    let next: SessionState;
     try {
-      setState(await authApi.me());
+      next = parseSessionState(await authApi.me());
     } catch {
-      setState({
-        user: null,
-        credits: 0,
-        wallet: null,
-        evmWallet: null,
-        balances: null,
-        tutorialUnlocked: false,
-      });
-    } finally {
-      setLoading(false);
+      next = SIGNED_OUT_STATE;
     }
+    setState(next);
+    setLoading(false);
+    return next;
   }, []);
 
   useEffect(() => {
@@ -81,14 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // publisher on its own. Leaving it behind hands the next person on this browser a working
     // credential, so it goes even if the logout request failed.
     clearAuth();
-    setState({
-      user: null,
-      credits: 0,
-      wallet: null,
-      evmWallet: null,
-      balances: null,
-      tutorialUnlocked: false,
-    });
+    setState(SIGNED_OUT_STATE);
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -99,7 +95,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       wallet: state.wallet,
       evmWallet: state.evmWallet,
       balances: state.balances,
-      tutorialUnlocked: Boolean(state.tutorialUnlocked),
+      // `state` already went through `parseSessionState`, which only ever sets this from a
+      // strict `=== true` check — re-asserted here, not with `Boolean(...)`, so a future
+      // caller of `setState` elsewhere in this provider cannot quietly reopen the "any
+      // truthy value unlocks" bug.
+      tutorialUnlocked: state.tutorialUnlocked === true,
       loading,
       signedIn: Boolean(state.user),
       refresh,

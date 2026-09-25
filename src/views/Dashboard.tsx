@@ -35,6 +35,7 @@ import { creditsApi } from '../api/credits';
 import { useAuth } from '../auth/AuthContext';
 import { consoleFallback, useConsoleView } from '../lib/consoleView';
 import { Logo } from '../components/common/Logo';
+import { runUnlockFlow } from './dashboardUnlock';
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -120,15 +121,13 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
   const handleUnlockTutorial = async () => {
     setIsUnlocking(true);
     try {
-      try {
-        await creditsApi.unlockTutorial();
-      } catch (err: unknown) {
-        console.warn('Backend unlock completed or fell back:', err);
+      // `runUnlockFlow` (src/views/dashboardUnlock.ts) ignores whether the unlock request
+      // itself threw — a 402, a 500 and a timeout all look the same from here — and opens the
+      // tutorial only once `refresh()` confirms the ledger actually recorded the unlock.
+      const { opened } = await runUnlockFlow(creditsApi.unlockTutorial, refresh);
+      if (opened) {
+        setShowTutorialModal(true);
       }
-      // Re-fetch the session so `tutorialUnlocked` reflects what the ledger actually recorded,
-      // instead of assuming the debit above succeeded.
-      await refresh();
-      setShowTutorialModal(true);
     } finally {
       setIsUnlocking(false);
     }
@@ -162,6 +161,16 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     // may not have — that request is what used to auto-create a publisher account for them.
     if (view !== 'provider') {
       setLoading(false);
+      return;
+    }
+
+    // Backend routes/dashboard.ts now refuses these figures with 402 while the account is
+    // locked. Skip the request rather than let a real load failure and the paid-unlock wall
+    // collapse into the same generic "could not load your dashboard" message — the render
+    // below shows the lock directly, from `isDashboardBlocked`, not from this fetch failing.
+    if (isDashboardBlocked) {
+      setLoading(false);
+      setLoadError(null);
       return;
     }
 
@@ -219,7 +228,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     return () => {
       isMounted = false;
     };
-  }, [publisherId, refreshKey, view]);
+  }, [publisherId, refreshKey, view, isDashboardBlocked]);
 
   const effectivePublisherId = getPublisherId() || publisherId || 'active';
   // Signed in with no publisher: there is nothing to load yet, so say that, not an error.
@@ -333,297 +342,312 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
             )}
 
             {/* Render Active Section */}
-            {activeSection === 'explore' && (
-              <ExploreApisView publisherId={effectivePublisherId} />
-            )}
+            {activeSection === 'explore' && <ExploreApisView publisherId={effectivePublisherId} />}
 
             {activeSection === 'connectors' && (
               <ConnectorsView publisherId={effectivePublisherId} onOpenTutorial={openTutorial} />
             )}
 
-            {showFigures && activeSection === 'apis' && (
-              <ApisView stats={stats} publisherId={effectivePublisherId} />
-            )}
-
-            {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
-
             {/* Not behind `showFigures`: settings reads no dashboard figures, and a failed
-                stats request used to take the API key and the payout address down with it. */}
+                stats request used to take the API key and the payout address down with it. It
+                is also not part of the $1.50 unlock, so it is never gated below. */}
             {activeSection === 'settings' && <SettingsView publisherId={effectivePublisherId} />}
 
-            {showFigures && activeSection === 'overview' && (
+            {/* Overview, APIs and Analytics are the "full dashboard access" the $1.50 unlock
+                sells (routes/credits.ts `/unlock-tutorial`; TutorialLockedCard copy below). The
+                backend now refuses their figures with 402 for a locked account (fetchStats
+                above skips the request entirely while `isDashboardBlocked`), so a direct link
+                to any of them must show the lock plainly — never blurred real content standing
+                in front of it, and never a generic load-failure message in its place. */}
+            {isDashboardBlocked &&
+            !needsAccount &&
+            ['apis', 'analytics', 'overview'].includes(activeSection) ? (
+              <TutorialLockedCard
+                balance={credits ?? 0}
+                onAddCredit={() => router.push('/profile')}
+                onUnlock={handleUnlockTutorial}
+                isUnlocking={isUnlocking}
+                className="mb-8"
+              />
+            ) : (
               <>
-                <ConsoleCover
-                  src={CONSOLE_COVERS.provider}
-                  title="Your APIs"
-                  subtitle={
-                    stats.health.status
-                      ? `What your endpoints have earned and served. Last health check: ${stats.health.status}.`
-                      : 'What your endpoints have earned and served. No health check has run yet.'
-                  }
-                />
-
-                {!tutorialUnlocked || !tutorialCompleted ? (
-                  <TutorialLockedCard
-                    balance={credits ?? 0}
-                    onAddCredit={() => router.push('/profile')}
-                    onUnlock={handleUnlockTutorial}
-                    isUnlocking={isUnlocking}
-                    className="mb-8"
-                  />
-                ) : (
-                  <McpOnboardingBanner
-                    className="mb-8"
-                    onOpenTutorial={openTutorial}
-                  />
+                {showFigures && activeSection === 'apis' && (
+                  <ApisView stats={stats} publisherId={effectivePublisherId} />
                 )}
 
-                <div
-                  className={`transition-all duration-300 ${
-                    isDashboardBlocked
-                      ? 'pointer-events-none select-none filter blur-[2px] opacity-40'
-                      : ''
-                  }`}
-                >
-                  <SettlePanel
-                    publisherId={effectivePublisherId}
-                    available={stats.availableBalance ?? 0}
-                    onSettled={() => setRefreshKey(k => k + 1)}
-                  />
+                {showFigures && activeSection === 'analytics' && <AnalyticsView stats={stats} />}
 
-              {/* Top Stat Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <Card hoverable className="relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 text-accent">
-                    <CreditCard size={64} />
-                  </div>
-                  <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
-                    Available Balance
-                  </h3>
-                  <div className="text-3xl flex items-baseline gap-2">
-                    ${(stats.availableBalance ?? 0).toFixed(4)}
-                  </div>
-                </Card>
+                {showFigures && activeSection === 'overview' && (
+                  <>
+                    <ConsoleCover
+                      src={CONSOLE_COVERS.provider}
+                      title="Your APIs"
+                      subtitle={
+                        stats.health.status
+                          ? `What your endpoints have earned and served. Last health check: ${stats.health.status}.`
+                          : 'What your endpoints have earned and served. No health check has run yet.'
+                      }
+                    />
 
-                <Card hoverable className="relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 text-accent-dim">
-                    <Clock size={64} />
-                  </div>
-                  <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
-                    Pending Balance
-                  </h3>
-                  <div className="text-3xl flex items-baseline gap-2">
-                    ${(stats.pendingBalance ?? 0).toFixed(4)}
-                  </div>
-                </Card>
+                    {/* This branch only renders once `showFigures` is true, which — now that
+                        fetchStats skips its request while `isDashboardBlocked` — means the
+                        account is already unlocked and walked through. The locked state lives
+                        entirely in the branch above; no need to check it again here. */}
+                    <McpOnboardingBanner className="mb-8" onOpenTutorial={openTutorial} />
 
-                <Card hoverable className="relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 text-accent">
-                    <Network size={64} />
-                  </div>
-                  <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
-                    Requests this month
-                  </h3>
-                  <div className="text-3xl font-mono">{stats.requestsMonth.toLocaleString()}</div>
-                  <div className="text-xs text-muted mt-1">
-                    Today: {stats.requestsToday.toLocaleString()}
-                  </div>
-                </Card>
+                    <div>
+                      <SettlePanel
+                        publisherId={effectivePublisherId}
+                        available={stats.availableBalance ?? 0}
+                        onSettled={() => setRefreshKey(k => k + 1)}
+                      />
 
-                <Card hoverable className="relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 text-accent-dim">
-                    <CheckCircle size={64} />
-                  </div>
-                  <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
-                    Success Rate
-                  </h3>
-                  <div className="text-3xl text-accent font-mono">
-                    {stats.successRate === null ? UNKNOWN : `${stats.successRate}%`}
-                  </div>
-                </Card>
-              </div>
+                      {/* Top Stat Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <Card hoverable className="relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-10 text-accent">
+                            <CreditCard size={64} />
+                          </div>
+                          <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
+                            Available Balance
+                          </h3>
+                          <div className="text-3xl flex items-baseline gap-2">
+                            ${(stats.availableBalance ?? 0).toFixed(4)}
+                          </div>
+                        </Card>
 
-              {/* Main Content Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Endpoints Table - spans 2 columns */}
-                <div className="lg:col-span-2 flex flex-col gap-8">
-                  <Card
-                    header={
-                      <div className="flex justify-between items-center">
-                        <span>Endpoint Performance</span>
-                        <button
-                          type="button"
-                          onClick={() => router.push('/onboarding')}
-                          className="text-xs text-accent hover:underline flex items-center gap-1 font-medium cursor-pointer"
-                        >
-                          <Plus size={13} /> Add Endpoint
-                        </button>
+                        <Card hoverable className="relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-10 text-accent-dim">
+                            <Clock size={64} />
+                          </div>
+                          <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
+                            Pending Balance
+                          </h3>
+                          <div className="text-3xl flex items-baseline gap-2">
+                            ${(stats.pendingBalance ?? 0).toFixed(4)}
+                          </div>
+                        </Card>
+
+                        <Card hoverable className="relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-10 text-accent">
+                            <Network size={64} />
+                          </div>
+                          <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
+                            Requests this month
+                          </h3>
+                          <div className="text-3xl font-mono">
+                            {stats.requestsMonth.toLocaleString()}
+                          </div>
+                          <div className="text-xs text-muted mt-1">
+                            Today: {stats.requestsToday.toLocaleString()}
+                          </div>
+                        </Card>
+
+                        <Card hoverable className="relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-10 text-accent-dim">
+                            <CheckCircle size={64} />
+                          </div>
+                          <h3 className="text-sm text-muted font-normal uppercase tracking-wider mb-2">
+                            Success Rate
+                          </h3>
+                          <div className="text-3xl text-accent font-mono">
+                            {stats.successRate === null ? UNKNOWN : `${stats.successRate}%`}
+                          </div>
+                        </Card>
                       </div>
-                    }
-                    padding="none"
-                  >
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Endpoint Path</Th>
-                          <Th>Method</Th>
-                          <Th numeric>Requests</Th>
-                          <Th numeric>Revenue</Th>
-                          <Th numeric>Avg Latency</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.endpoints && stats.endpoints.length > 0 ? (
-                          stats.endpoints.map((ep: DashboardEndpointRow, i: number) => {
-                            const reqCount = Number(ep.request_count ?? ep.requests ?? 0);
-                            const rev = Number(ep.total_revenue ?? ep.revenue ?? 0);
-                            const lat = Number(ep.avg_latency ?? ep.latency ?? 0);
-                            return (
-                              <tr key={i}>
-                                <Td mono>{ep.path || '/'}</Td>
-                                <Td>
-                                  <span className="px-2 py-1 rounded text-xs bg-panel-hover text-main font-mono">
-                                    {ep.method || 'GET'}
-                                  </span>
-                                </Td>
-                                <Td numeric>{reqCount.toLocaleString()}</Td>
-                                <Td numeric className="text-accent font-medium">
-                                  ${rev.toFixed(4)}
-                                </Td>
-                                <Td numeric mono>
-                                  {Math.round(lat)}ms
-                                </Td>
-                              </tr>
-                            );
-                          })
-                        ) : (
-                          <tr>
-                            <TdEmpty colSpan={5}>
-                              <div className="py-6 text-center">
-                                <p className="mb-2">No endpoints configured yet</p>
-                                <Button
-                                  variant="primary"
-                                  size="sm"
+
+                      {/* Main Content Grid */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Endpoints Table - spans 2 columns */}
+                        <div className="lg:col-span-2 flex flex-col gap-8">
+                          <Card
+                            header={
+                              <div className="flex justify-between items-center">
+                                <span>Endpoint Performance</span>
+                                <button
+                                  type="button"
                                   onClick={() => router.push('/onboarding')}
+                                  className="text-xs text-accent hover:underline flex items-center gap-1 font-medium cursor-pointer"
                                 >
-                                  Publish Your First API
-                                </Button>
+                                  <Plus size={13} /> Add Endpoint
+                                </button>
                               </div>
-                            </TdEmpty>
-                          </tr>
-                        )}
-                      </tbody>
-                    </Table>
-                  </Card>
+                            }
+                            padding="none"
+                          >
+                            <Table>
+                              <thead>
+                                <tr>
+                                  <Th>Endpoint Path</Th>
+                                  <Th>Method</Th>
+                                  <Th numeric>Requests</Th>
+                                  <Th numeric>Revenue</Th>
+                                  <Th numeric>Avg Latency</Th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {stats.endpoints && stats.endpoints.length > 0 ? (
+                                  stats.endpoints.map((ep: DashboardEndpointRow, i: number) => {
+                                    const reqCount = Number(ep.request_count ?? ep.requests ?? 0);
+                                    const rev = Number(ep.total_revenue ?? ep.revenue ?? 0);
+                                    const lat = Number(ep.avg_latency ?? ep.latency ?? 0);
+                                    return (
+                                      <tr key={i}>
+                                        <Td mono>{ep.path || '/'}</Td>
+                                        <Td>
+                                          <span className="px-2 py-1 rounded text-xs bg-panel-hover text-main font-mono">
+                                            {ep.method || 'GET'}
+                                          </span>
+                                        </Td>
+                                        <Td numeric>{reqCount.toLocaleString()}</Td>
+                                        <Td numeric className="text-accent font-medium">
+                                          ${rev.toFixed(4)}
+                                        </Td>
+                                        <Td numeric mono>
+                                          {Math.round(lat)}ms
+                                        </Td>
+                                      </tr>
+                                    );
+                                  })
+                                ) : (
+                                  <tr>
+                                    <TdEmpty colSpan={5}>
+                                      <div className="py-6 text-center">
+                                        <p className="mb-2">No endpoints configured yet</p>
+                                        <Button
+                                          variant="primary"
+                                          size="sm"
+                                          onClick={() => router.push('/onboarding')}
+                                        >
+                                          Publish Your First API
+                                        </Button>
+                                      </div>
+                                    </TdEmpty>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </Table>
+                          </Card>
 
-                  <Card header="Settlement History" padding="none">
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Date</Th>
-                          <Th numeric>Amount</Th>
-                          <Th>Tx Hash</Th>
-                          <Th>Status</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.settlements && stats.settlements.length > 0 ? (
-                          stats.settlements.map((s: DashboardSettlementRow, i: number) => {
-                            const amt = Number(s.amount || 0);
-                            const dateStr = String(
-                              s.created_at || s.period_end || s.date || 'Recent',
-                            );
-                            const tx = String(s.tx_id || s.txHash || s.id || UNKNOWN);
-                            return (
-                              <tr key={i}>
-                                <Td>{dateStr.slice(0, 10)}</Td>
-                                <Td numeric className="font-medium">
-                                  ${amt.toFixed(4)}
-                                </Td>
-                                <Td mono className="text-accent" title={tx}>
-                                  {truncateMiddle(tx)}
-                                </Td>
-                                <Td>
-                                  <StatusBadge status={settlementStatus(s.status)} />
-                                </Td>
-                              </tr>
-                            );
-                          })
-                        ) : (
-                          <tr>
-                            <TdEmpty colSpan={4}>No settlements processed yet</TdEmpty>
-                          </tr>
-                        )}
-                      </tbody>
-                    </Table>
-                  </Card>
-                </div>
+                          <Card header="Settlement History" padding="none">
+                            <Table>
+                              <thead>
+                                <tr>
+                                  <Th>Date</Th>
+                                  <Th numeric>Amount</Th>
+                                  <Th>Tx Hash</Th>
+                                  <Th>Status</Th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {stats.settlements && stats.settlements.length > 0 ? (
+                                  stats.settlements.map((s: DashboardSettlementRow, i: number) => {
+                                    const amt = Number(s.amount || 0);
+                                    const dateStr = String(
+                                      s.created_at || s.period_end || s.date || 'Recent',
+                                    );
+                                    const tx = String(s.tx_id || s.txHash || s.id || UNKNOWN);
+                                    return (
+                                      <tr key={i}>
+                                        <Td>{dateStr.slice(0, 10)}</Td>
+                                        <Td numeric className="font-medium">
+                                          ${amt.toFixed(4)}
+                                        </Td>
+                                        <Td mono className="text-accent" title={tx}>
+                                          {truncateMiddle(tx)}
+                                        </Td>
+                                        <Td>
+                                          <StatusBadge status={settlementStatus(s.status)} />
+                                        </Td>
+                                      </tr>
+                                    );
+                                  })
+                                ) : (
+                                  <tr>
+                                    <TdEmpty colSpan={4}>No settlements processed yet</TdEmpty>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </Table>
+                          </Card>
+                        </div>
 
-                {/* Sidebar Data - spans 1 column */}
-                <div className="lg:col-span-1 flex flex-col gap-8">
-                  <Card header="Recent Transactions">
-                    <div className="flex flex-col gap-4">
-                      {stats.transactions && stats.transactions.length > 0 ? (
-                        stats.transactions.map((tx: DashboardTransactionRow, i: number) => {
-                          const amt = Number(tx.amount || 0);
-                          const txHash = String(tx.tx_id || tx.id || UNKNOWN);
-                          const timeStr = String(tx.created_at || tx.time || '');
-                          return (
-                            <div
-                              key={i}
-                              className="flex justify-between items-center p-3 bg-bg rounded border border-border"
-                            >
-                              <div>
-                                <div className="font-mono text-xs text-muted mb-1" title={txHash}>
-                                  {truncateMiddle(txHash, 8, 6)}
+                        {/* Sidebar Data - spans 1 column */}
+                        <div className="lg:col-span-1 flex flex-col gap-8">
+                          <Card header="Recent Transactions">
+                            <div className="flex flex-col gap-4">
+                              {stats.transactions && stats.transactions.length > 0 ? (
+                                stats.transactions.map((tx: DashboardTransactionRow, i: number) => {
+                                  const amt = Number(tx.amount || 0);
+                                  const txHash = String(tx.tx_id || tx.id || UNKNOWN);
+                                  const timeStr = String(tx.created_at || tx.time || '');
+                                  return (
+                                    <div
+                                      key={i}
+                                      className="flex justify-between items-center p-3 bg-bg rounded border border-border"
+                                    >
+                                      <div>
+                                        <div
+                                          className="font-mono text-xs text-muted mb-1"
+                                          title={txHash}
+                                        >
+                                          {truncateMiddle(txHash, 8, 6)}
+                                        </div>
+                                        <div className="text-xs text-muted">
+                                          {timeStr.slice(0, 16).replace('T', ' ')}
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-accent text-sm font-medium">
+                                          +${amt}
+                                        </div>
+                                        <div className="text-xs text-muted mt-1">
+                                          {tx.status || 'CONFIRMED'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="p-4 text-center text-xs text-muted">
+                                  No transactions recorded yet
                                 </div>
-                                <div className="text-xs text-muted">
-                                  {timeStr.slice(0, 16).replace('T', ' ')}
-                                </div>
+                              )}
+                            </div>
+                          </Card>
+
+                          <Card header="System Health">
+                            <div className="flex flex-col gap-4">
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted text-sm">Last health check</span>
+                                <span className="font-medium text-sm">
+                                  {stats.health.status ?? 'None yet'}
+                                </span>
                               </div>
-                              <div className="text-right">
-                                <div className="text-accent text-sm font-medium">+${amt}</div>
-                                <div className="text-xs text-muted mt-1">
-                                  {tx.status || 'CONFIRMED'}
-                                </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted text-sm">
+                                  Average latency, all requests
+                                </span>
+                                <span className="font-medium text-sm font-mono">
+                                  {stats.successRate === null
+                                    ? UNKNOWN
+                                    : `${stats.health.avgLatency}ms`}
+                                </span>
                               </div>
                             </div>
-                          );
-                        })
-                      ) : (
-                        <div className="p-4 text-center text-xs text-muted">
-                          No transactions recorded yet
+                          </Card>
                         </div>
-                      )}
-                    </div>
-                  </Card>
-
-                  <Card header="System Health">
-                    <div className="flex flex-col gap-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted text-sm">Last health check</span>
-                        <span className="font-medium text-sm">
-                          {stats.health.status ?? 'None yet'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted text-sm">Average latency, all requests</span>
-                        <span className="font-medium text-sm font-mono">
-                          {stats.successRate === null ? UNKNOWN : `${stats.health.avgLatency}ms`}
-                        </span>
                       </div>
                     </div>
-                  </Card>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  </>
-);
+    </>
+  );
 };
 
 export default Dashboard;
