@@ -38,6 +38,7 @@ import { consoleFallback, useConsoleView } from '../lib/consoleView';
 import { Logo } from '../components/common/Logo';
 import { runUnlockFlow } from './dashboardUnlock';
 import { runProviderAccessRequestFlow } from './providerAccessFlow';
+import { isProviderAccessBlocked as computeProviderAccessBlocked } from './providerAccessGate';
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -160,7 +161,11 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
     }
   };
 
-  const isProviderAccessBlocked = !authLoading && providerAccess !== 'approved';
+  // `computeProviderAccessBlocked` (src/views/providerAccessGate.ts): fails closed on anything
+  // but the exact literal `'approved'`. Once the backend's PROVIDER_ACCESS_OPEN launch switch
+  // is on, GET /auth/me reports `providerAccess` as `'approved'` for every account, so this
+  // needs no flag of its own to stay in sync with that.
+  const isProviderAccessBlocked = computeProviderAccessBlocked(providerAccess, authLoading);
 
   const activeSection = useMemo(() => {
     if (section && section !== 'overview') return section;
