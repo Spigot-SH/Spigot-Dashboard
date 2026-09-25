@@ -11,12 +11,7 @@ import {
 // re-exported below — see that file for why (Node's own module loader cannot follow this file's
 // own extension-less `../lib/domainVerification` import, so this file cannot be loaded directly
 // by test/legacyApiKey.test.ts; the storage helpers were pulled out so they can be).
-export {
-  setPublisherId,
-  getPublisherId,
-  clearAuth,
-  clearLegacyApiKey,
-} from '../lib/apiKeyStorage';
+export { setPublisherId, getPublisherId, clearAuth, clearLegacyApiKey } from '../lib/apiKeyStorage';
 
 /**
  * Always the relative '/api', which next.config.ts rewrites to the Express backend.
@@ -296,15 +291,23 @@ export const apiClient = {
    * response without leaving the request itself unresolved server-side — rotation is a single
    * atomic UPDATE, so a request that times out client-side may still have committed.
    *
-   * Rejects a missing/non-string key, a non-matching or invalid publisher id, and a
-   * non-string `apiKeyRotatedAt` — a caller must never show a key from a response that does
-   * not actually prove it belongs to the publisher and rotation it asked for.
+   * Rejects a missing/non-string key, a non-matching or invalid publisher id, a non-string
+   * `apiKeyRotatedAt`, and — the field the rotation contract actually checks, not merely
+   * displays — a missing, null, empty or otherwise malformed `apiKeyVersion` (Codex round-3
+   * rejection, f20dr3: "reject a missing, null, or empty issuance marker"). A caller must never
+   * show a key from a response that does not actually prove it belongs to the publisher and
+   * rotation it asked for.
    */
   async rotateApiKey(
     publisherId: string,
     confirmationCode: string,
     signal?: AbortSignal,
-  ): Promise<{ id: string; api_key: string; apiKeyRotatedAt: string | null }> {
+  ): Promise<{
+    id: string;
+    api_key: string;
+    apiKeyRotatedAt: string | null;
+    apiKeyVersion: number;
+  }> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/api-key`, {
       method: 'POST',
       credentials: 'include',
@@ -320,11 +323,15 @@ export const apiClient = {
   },
 
   /**
-   * The read-only rotation marker (`apiKeyRotatedAt`) a publisher currently has, with no
-   * secret in the response. Used to derive Start.tsx's "Get your API key" completion and, in
+   * The read-only rotation version (`apiKeyVersion`) a publisher currently has, with no secret
+   * in the response. Used to derive Start.tsx's "Get your API key" completion and, in
    * SettingsView's key pane, to re-check before revealing or copying a key that a later
    * rotation — in another tab or device — may have already revoked
    * (src/lib/apiKeyRotation.ts, `keyMatchesServerMarker`).
+   *
+   * Rejects a response whose `id` does not match the publisher this call actually asked about
+   * (Codex round-3 rejection, f20dr3: "reject a publisher-status response whose ID differs from
+   * the requested ID") — a caller must never apply another publisher's key status to this one.
    */
   async getPublisherKeyInfo(publisherId: string): Promise<PublisherKeyInfo> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}`, {
@@ -333,7 +340,9 @@ export const apiClient = {
     if (!res.ok) throw new Error(`Could not check the API key status (${res.status})`);
     const body = await res.json().catch(() => ({}));
     const parsed = parsePublisherKeyInfo(body);
-    if (!parsed) throw new Error('Server returned a malformed publisher record');
+    if (!parsed || parsed.id !== publisherId) {
+      throw new Error('Server returned a malformed publisher record');
+    }
     return parsed;
   },
 

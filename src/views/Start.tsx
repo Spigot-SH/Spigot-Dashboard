@@ -18,9 +18,11 @@ interface Progress {
   endpoints: number;
   paidCalls: number;
   hasWallet: boolean;
-  /** The rotation marker apiClient.getPublisherKeyInfo reports — null means no key has ever
-   * actually been issued to this publisher (registration's own key is never shown). */
-  apiKeyRotatedAt: string | null;
+  /** The rotation version apiClient.getPublisherKeyInfo reports — null means no key has ever
+   * actually been issued to this publisher (registration's own key is never shown). The actual
+   * field the rotation contract checks (Codex round-3, f20m/f20dr3): unlike apiKeyRotatedAt's
+   * millisecond-resolution timestamp, this integer counter cannot collide between two rotations. */
+  apiKeyVersion: number | null;
 }
 
 const VOLUME_COPY = {
@@ -75,12 +77,20 @@ export default function Start() {
   };
 
   useEffect(() => {
+    // Reset immediately, before the fetch below even starts — not only when there is no
+    // publisher. Without this, switching to a *different* publisher (this same signed-in
+    // account, or a different one) while progress from the previous one is still in state would
+    // render that stale progress under the new publisher's identity for every render between
+    // this effect starting and its own fetch resolving (Codex round-3 rejection, f20dr3: "clear
+    // progress when the publisher changes"). A failed check (the catch below) also leaves
+    // `error` set with `progress` cleared, rather than stale data silently standing in.
+    setProgress(null);
     if (!publisher) return;
     let live = true;
     Promise.all([
       apiClient.getDashboard(publisher.id),
       apiClient.getWallet(publisher.id),
-      // The read-only rotation marker — null when no key has ever actually been issued to this
+      // The read-only rotation version — null when no key has ever actually been issued to this
       // publisher, distinct from a publisher row always carrying registration's never-shown
       // placeholder key. A failed check here must not silently read as "done": if this call
       // fails while the other two succeed, the whole Promise.all rejects and the catch below
@@ -94,7 +104,7 @@ export default function Start() {
           endpoints: stats.endpoints?.length ?? 0,
           paidCalls: stats.transactions?.length ?? 0,
           hasWallet: Boolean(wallet),
-          apiKeyRotatedAt: keyInfo.apiKeyRotatedAt,
+          apiKeyVersion: keyInfo.apiKeyVersion,
         });
         setError(null);
       })
@@ -166,11 +176,20 @@ export default function Start() {
     {
       key: 'key',
       title: 'Get your API key',
-      // Done only once the backend confirms a key was actually issued (apiKeyRotatedAt, from
+      // Done only once the backend confirms a key was actually issued (apiKeyVersion, from
       // POST /publishers/:id/api-key) — registration mints a row but never hands out a usable
       // key, so `Boolean(publisher)` alone read this step Done for a publisher that had never
       // gotten one. Unknown (null) until that check comes back, the same as the steps below.
-      done: deriveKeyIssuedState(Boolean(publisher), progress?.apiKeyRotatedAt),
+      //
+      // Does not separately distinguish "a legacy row whose pre-step-up key still works" from
+      // "never issued" (Codex round-3 rejection, f20dr3) because that distinction no longer
+      // exists to make: the backend's boot migration (Spigot-Algorand db/migrations.ts,
+      // revokeUnversionedPublisherKeys) force-rotates every publisher key that predates
+      // apiKeyVersion tracking onto a fresh, never-shown value — the same "no key has ever
+      // actually been issued" state a brand-new registration is already in. `apiKeyVersion:
+      // null` is therefore unambiguous everywhere: not done, full stop; there is no third,
+      // "possibly still usable" case left for this step to render.
+      done: deriveKeyIssuedState(Boolean(publisher), progress?.apiKeyVersion),
       todo: 'Issuing a key needs an emailed confirmation code, from Settings.',
       // No key is ever handed out here or at registration — it needs the emailed step-up
       // code, which the key pane in Settings runs. "Reveal and copy" promised a key that

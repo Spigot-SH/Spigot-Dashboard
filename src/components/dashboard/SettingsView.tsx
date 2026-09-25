@@ -133,16 +133,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
   // cannot be shown again after this page is left, and another tab's response never writes
   // into this state.
   const [apiKey, setApiKeyState] = useState<string | null>(null);
-  // The apiKeyRotatedAt this tab's own key (above) was issued with — the rotation marker,
-  // never the key itself. A ref, not state: nothing renders from it directly, it only needs to
-  // be read synchronously inside the BroadcastChannel handler and the pre-reveal check below,
-  // and a ref never goes stale between a render and an async callback the way a captured state
-  // value can.
-  const ownKeyMarker = useRef<string | null>(null);
+  // The apiKeyVersion this tab's own key (above) was issued with — the actual rotation marker
+  // the contract compares (Codex round-3, f20m/f20dr3: an ISO timestamp alone can collide when
+  // two rotations land in the same millisecond; a counter cannot). A ref, not state: nothing
+  // renders from it directly, it only needs to be read synchronously inside the
+  // BroadcastChannel handler and the pre-reveal check below, and a ref never goes stale between
+  // a render and an async callback the way a captured state value can.
+  const ownKeyVersion = useRef<number | null>(null);
   // This publisher's cross-tab rotation channel (opened below), so a successful rotation can
   // tell this browser's other tabs immediately instead of waiting for their next reveal
   // attempt.
   const rotationChannel = useRef<BroadcastChannel | null>(null);
+  // The signed-in *user* this tab's key/verification state actually belongs to — kept in a ref
+  // so an in-flight request/confirm call started for one account can tell, when its response
+  // finally arrives, whether the signed-in account has since switched to a different one (Codex
+  // round-3 rejection, f20dr3: "clear a held key when the authenticated account changes and
+  // ignore a pending response from the previous account"). Deliberately the *user*, not the
+  // publisher: within one `requestKey` call, `publisher` itself goes from absent to present as
+  // that same call's own registration step completes — that transition must not be mistaken for
+  // an account switch and made to discard the very response it is about to apply.
+  const ownedUserId = useRef<string | null>(user?.id ?? null);
   const [generating, setGenerating] = useState(false);
   const [confirmingKey, setConfirmingKey] = useState(false);
   const [verifyingKey, setVerifyingKey] = useState(false);
@@ -215,10 +225,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
    */
   const revokeShownKey = (message: string) => {
     setApiKeyState(null);
-    ownKeyMarker.current = null;
+    ownKeyVersion.current = null;
     setShowKey(false);
     setGenError(message);
   };
+
+  /**
+   * A signed-in account switch (sign-out/sign-in as someone else in the same tab, without a
+   * full page reload) must not leave a previous account's key, or its in-flight request/confirm
+   * state, attached to whatever account is now authenticated — Codex round-3 rejection, f20dr3:
+   * "clear a held key when the authenticated account changes and ignore a pending response from
+   * the previous account." `ownedUserId` is updated first (synchronously, before the clear
+   * below), so `requestKey`/`confirmKey`'s own post-await checks — which compare the user id
+   * they started for against this ref — see the switch immediately and discard whatever
+   * response arrives after it, even one that resolves in the same tick as this effect. Keyed on
+   * `user?.id`, not `publisher?.id`: within one `requestKey` call, `publisher` itself goes from
+   * absent to present as that same call's own registration step completes, and that transition
+   * must not clear the very state the call is about to set.
+   */
+  useEffect(() => {
+    ownedUserId.current = user?.id ?? null;
+    setApiKeyState(null);
+    ownKeyVersion.current = null;
+    setShowKey(false);
+    setCodeRequested(false);
+    setStepUpCode('');
+    setGenError(null);
+  }, [user?.id]);
 
   /**
    * Same-browser rotations invalidate a held key immediately, instead of waiting for the next
@@ -234,7 +267,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
     const channel = new BroadcastChannel(rotationChannelName(pubId));
     const onMessage = (event: MessageEvent) => {
       if (!isRotationBroadcast(event.data, pubId)) return;
-      if (shouldInvalidateOnBroadcast(ownKeyMarker.current, event.data.rotatedAt)) {
+      if (shouldInvalidateOnBroadcast(ownKeyVersion.current, event.data.version)) {
         revokeShownKey('This key was rotated in another tab, and is now revoked. Get a new one.');
       }
     };
@@ -249,27 +282,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
 
   /**
    * The rotation contract's enforcement point: before a key already shown in this tab is
-   * revealed or copied, re-check the live server marker
-   * (`GET /publishers/:id`, `apiClient.getPublisherKeyInfo`) against the marker this tab's key
+   * revealed or copied, re-check the live server version
+   * (`GET /publishers/:id`, `apiClient.getPublisherKeyInfo`) against the version this tab's key
    * was issued with. A later rotation — another tab (usually already caught above by the
    * broadcast), another device, or this tab's own retry after a lost response — changes the
-   * server's marker, and `keyMatchesServerMarker` fails closed on anything but an exact match,
+   * server's version, and `keyMatchesServerMarker` fails closed on anything but an exact match,
    * including a failed check itself. Returns whether the key already held may still be used.
    */
   const verifyKeyStillCurrent = async (): Promise<boolean> => {
     if (!currentApiKey || !publisher?.id) return false;
+    const forUserId = user?.id ?? null;
     setVerifyingKey(true);
     try {
       const info = await apiClient.getPublisherKeyInfo(publisher.id);
-      if (keyMatchesServerMarker(ownKeyMarker.current, info.apiKeyRotatedAt)) return true;
+      // The signed-in account may have switched while this request was in flight — the account-
+      // switch effect above already cleared this tab's state for the new one, so applying a
+      // stale response here would resurrect state that belongs to no one currently signed in.
+      if (ownedUserId.current !== forUserId) return false;
+      if (keyMatchesServerMarker(ownKeyVersion.current, info.apiKeyVersion)) return true;
       revokeShownKey('This key was rotated elsewhere, and is now revoked. Get a new one.');
       return false;
     } catch (e: unknown) {
+      if (ownedUserId.current !== forUserId) return false;
       // Could not confirm the key is still current — fail closed, the same as a mismatch.
-      revokeShownKey(errorMessage(e, 'Could not confirm this key is still current. Get a new one.'));
+      revokeShownKey(
+        errorMessage(e, 'Could not confirm this key is still current. Get a new one.'),
+      );
       return false;
     } finally {
-      setVerifyingKey(false);
+      if (ownedUserId.current === forUserId) setVerifyingKey(false);
     }
   };
 
@@ -353,6 +394,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
     // code on every reissue) — the button is disabled for this (`canResendCode`, below), but
     // guard the handler itself too, since it is also this pane's first "Get key" action.
     if (!canResendCode(generating, confirmingKey)) return;
+    // Captured before the first await: if the signed-in account switches while this call is in
+    // flight, the response below must not be applied to whatever account is current by then.
+    const startedForUserId = user?.id ?? null;
     setGenerating(true);
     setGenError(null);
     try {
@@ -363,6 +407,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
         const created = await apiClient.registerPublisher({
           name: user?.email ? user.email.split('@')[0] : 'My Publisher',
         });
+        if (ownedUserId.current !== startedForUserId) return; // account switched mid-request
         setPublisherId(created.id);
         await refresh();
         pubId = created.id;
@@ -370,11 +415,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       // Throws unless the backend confirmed codeSent: true (apiClient.requestApiKeyCode) — a
       // malformed or incomplete "success" body never reaches setCodeRequested(true) below.
       await apiClient.requestApiKeyCode();
+      if (ownedUserId.current !== startedForUserId) return; // account switched mid-request
       setCodeRequested(true);
     } catch (e: unknown) {
+      if (ownedUserId.current !== startedForUserId) return;
       setGenError(errorMessage(e, 'Could not send a verification code'));
     } finally {
-      setGenerating(false);
+      if (ownedUserId.current === startedForUserId) setGenerating(false);
     }
   };
 
@@ -399,28 +446,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       setGenError('Enter the 6-digit code we emailed you.');
       return;
     }
+    // Captured before the first await: a response that arrives after the signed-in account has
+    // switched must never be shown as that new account's key (Codex round-3 rejection, f20dr3:
+    // "ignore a pending response from the previous account... test a switch both before and
+    // after a rotation response").
+    const startedForUserId = user?.id ?? null;
     setConfirmingKey(true);
     setGenError(null);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       // apiClient.rotateApiKey already rejects a missing/non-string key, a non-matching or
-      // invalid publisher id, and a malformed apiKeyRotatedAt, so `result` here is guaranteed
-      // well-formed.
+      // invalid publisher id, a malformed apiKeyRotatedAt, and a missing/invalid apiKeyVersion,
+      // so `result` here is guaranteed well-formed.
       const result = await apiClient.rotateApiKey(pubId, code, controller.signal);
+      if (ownedUserId.current !== startedForUserId) return; // account switched mid-confirm
       setApiKeyState(result.api_key);
-      ownKeyMarker.current = result.apiKeyRotatedAt;
+      ownKeyVersion.current = result.apiKeyVersion;
       setShowKey(true);
       setCodeRequested(false);
       setStepUpCode('');
       // Tell this browser's other tabs immediately — without this, a tab holding an older key
       // only learns it is stale the next time it tries to reveal or copy it.
-      if (result.apiKeyRotatedAt) {
-        const broadcast: RotationBroadcast = { publisherId: pubId, rotatedAt: result.apiKeyRotatedAt };
-        rotationChannel.current?.postMessage(broadcast);
-      }
+      const broadcast: RotationBroadcast = { publisherId: pubId, version: result.apiKeyVersion };
+      rotationChannel.current?.postMessage(broadcast);
       await refresh();
     } catch (e: unknown) {
+      if (ownedUserId.current !== startedForUserId) return;
       if (e instanceof DOMException && e.name === 'AbortError') {
         setGenError(
           'No response in time. Do not assume it worked — request a new code and rotate again; only a key shown here in this tab is valid.',
@@ -430,7 +482,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
       }
     } finally {
       clearTimeout(timeout);
-      setConfirmingKey(false);
+      if (ownedUserId.current === startedForUserId) setConfirmingKey(false);
     }
   };
 
