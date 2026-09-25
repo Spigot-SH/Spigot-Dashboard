@@ -269,7 +269,12 @@ export const apiClient = {
 
   async initiateVerification(
     domain: string,
-  ): Promise<{ id: string; challenge: string; instructions: string }> {
+  ): Promise<{
+    id: string;
+    challenge: string;
+    instructions: string;
+    record: { type: string; name: string; value: string };
+  }> {
     const res = await fetch(`${BASE_URL}/verify/initiate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

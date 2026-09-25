@@ -18,6 +18,7 @@ interface DomainVerifyProps {
 
 const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, onBack }) => {
   const [challenge, setChallenge] = useState<string>('');
+  const [recordName, setRecordName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [verifying, setVerifying] = useState<boolean>(false);
   const [status, setStatus] = useState<'IDLE' | 'PENDING' | 'VERIFIED' | 'FAILED'>(
@@ -33,7 +34,8 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
     try {
       setLoading(true);
       const res = await apiClient.initiateVerification(domain);
-      setChallenge(res.challenge);
+      setChallenge(res.record.value);
+      setRecordName(res.record.name);
       setVerificationId(res.id);
       setStatus('PENDING');
       setLoading(false);
@@ -71,7 +73,9 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
       setVerifying(false);
     } catch (err) {
       setStatus('FAILED');
-      setErrorMessage(toMessage(err, 'Verification failed. Please ensure the file is accessible.'));
+      setErrorMessage(
+        toMessage(err, 'Verification failed. Please ensure the DNS TXT record is published.'),
+      );
       setVerifying(false);
     }
   };
@@ -104,21 +108,19 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
                   <AlertTriangle size={18} /> Instructions
                 </h4>
                 <p className="text-sm text-muted mb-4">
-                  To verify you own this domain, serve the following challenge code at the exact URL
-                  path below. The file must be accessible publicly without authentication.
+                  To verify you own this domain, add the following DNS TXT record with your
+                  domain registrar or DNS provider. DNS changes can take a few minutes to
+                  propagate — if the check below fails right away, wait a bit and try again.
                 </p>
 
-                <div className="mb-2 text-sm text-main font-medium">
-                  Create a file at this path:
-                </div>
+                <div className="mb-2 text-sm text-main font-medium">Record type: TXT</div>
+
+                <div className="mb-2 text-sm text-main font-medium">Host / name:</div>
                 <pre className="mb-4">
-                  <code>
-                    https://{domain.replace(/^https?:\/\//, '').split('/')[0]}
-                    /.well-known/x402/verify
-                  </code>
+                  <code>{recordName || domain}</code>
                 </pre>
 
-                <div className="mb-2 text-sm text-main font-medium">With this exact content:</div>
+                <div className="mb-2 text-sm text-main font-medium">Value:</div>
                 <div className="relative">
                   <pre>
                     <code>{challenge || 'Generating challenge...'}</code>
