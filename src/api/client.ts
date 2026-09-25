@@ -24,6 +24,20 @@ export function clearAuth(): void {
   localStorage.removeItem(PUBLISHER_ID_STORAGE_KEY);
 }
 
+/**
+ * Delete a key an older build left in localStorage, on load — not only at sign-out. A
+ * browser that is already signed in when it upgrades to this build never fires sign-out, so
+ * that alone left the key sitting there indefinitely. Safe to call before a session exists:
+ * it only touches storage.
+ */
+export function clearLegacyApiKey(): void {
+  try {
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+  } catch {
+    // Storage can throw (private mode, disabled storage) — nothing to clean up then.
+  }
+}
+
 // --- Types ---
 export interface Publisher {
   id?: string;
@@ -256,20 +270,52 @@ export const apiClient = {
     return body;
   },
 
-  /** New server-to-server API key, returned once. The previous key stops working. */
-  async rotateApiKey(publisherId: string): Promise<{ id: string; api_key: string }> {
+  /**
+   * Sends the emailed step-up code that `rotateApiKey` requires. A session cookie alone must
+   * not be enough to mint or read a key, so issuing or rotating one is a two-step call: this
+   * one, then `rotateApiKey` with the code it emails.
+   */
+  async requestApiKeyCode(): Promise<{ codeSent: boolean; message: string }> {
+    const res = await fetch(`${BASE_URL}/publishers/api-key/request-code`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error || 'Could not send a verification code');
+    return {
+      codeSent: Boolean(body?.codeSent),
+      message:
+        typeof body?.message === 'string' && body.message
+          ? body.message
+          : 'We emailed a verification code.',
+    };
+  },
+
+  /**
+   * New server-to-server API key, returned once, from the emailed step-up code
+   * `requestApiKeyCode` sent. The previous key stops working immediately, including in any
+   * other tab or device that had it. `signal` lets a caller give up waiting for a slow
+   * response without leaving the request itself unresolved server-side — rotation is a single
+   * atomic UPDATE, so a request that times out client-side may still have committed.
+   */
+  async rotateApiKey(
+    publisherId: string,
+    confirmationCode: string,
+    signal?: AbortSignal,
+  ): Promise<{ id: string; api_key: string }> {
     const res = await fetch(`${BASE_URL}/publishers/${publisherId}/api-key`, {
       method: 'POST',
       credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmationCode }),
+      signal,
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.error || 'Could not issue a new key');
     return body;
   },
 
-  async initiateVerification(
-    domain: string,
-  ): Promise<{
+  async initiateVerification(domain: string): Promise<{
     id: string;
     challenge: string;
     instructions: string;

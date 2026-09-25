@@ -24,8 +24,6 @@ export interface OnboardingData {
   githubUrl?: string;
   /** Set once the publisher record exists server-side. */
   publisherId?: string;
-  /** Returned with the publisher record; used for `X-API-Key` on later steps. */
-  apiKey?: string;
 
   // Step 2 — domain verification
   domainVerified?: boolean;

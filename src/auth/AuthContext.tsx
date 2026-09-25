@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi, SessionState, AuthUser, PublisherInfo, WalletInfo, Balances } from '../api/auth';
-import { clearAuth } from '../api/client';
+import { clearAuth, clearLegacyApiKey } from '../api/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -54,6 +54,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    // Runs on every app load, not only at sign-out: a browser that is already signed in when
+    // it upgrades to this build would otherwise keep a legacy key in storage indefinitely,
+    // since sign-out is exactly the event such a session never fires.
+    clearLegacyApiKey();
     void refresh();
   }, [refresh]);
 

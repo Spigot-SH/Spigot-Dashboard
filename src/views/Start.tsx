@@ -120,8 +120,11 @@ export default function Start() {
       key: 'key',
       title: 'Get your API key',
       done: Boolean(publisher),
-      todo: 'The key is issued with your publisher account.',
-      action: publisher ? <LinkButton href={settings} label="Reveal and copy" /> : null,
+      todo: 'Issuing a key needs an emailed confirmation code, from Settings.',
+      // No key is ever handed out here or at registration — it needs the emailed step-up
+      // code, which the key pane in Settings runs. "Reveal and copy" promised a key that
+      // registration no longer returns, so this links straight to the pane that gets one.
+      action: publisher ? <LinkButton href={`${settings}#key`} label="Get your key" /> : null,
     },
     {
       key: 'gateway',

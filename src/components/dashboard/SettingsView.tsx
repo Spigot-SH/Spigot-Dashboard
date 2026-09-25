@@ -120,11 +120,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
   const search = useRef<HTMLInputElement>(null);
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  // A key the server just issued. It is held in memory for this view only and never stored:
-  // the backend keeps only its hash, so it cannot be shown again after this page is left.
+  // A key the server just issued, from this tab's own successful response only. It is held
+  // in memory for this view alone and never stored: the backend keeps only its hash, so it
+  // cannot be shown again after this page is left, and another tab's response never writes
+  // into this state.
   const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [confirmingKey, setConfirmingKey] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Set once the emailed step-up code has been requested; cleared on success or on starting
+  // over. A session cookie alone cannot mint or read a key, so getting one is always this
+  // two-step call: request a code, then send it back with the rotate/issue request.
+  const [codeRequested, setCodeRequested] = useState(false);
+  const [stepUpCode, setStepUpCode] = useState('');
   const [payout, setPayout] = useState<
     { address?: string; chain?: string } | null | 'loading' | 'error'
   >('loading');
@@ -241,27 +249,79 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const generate = async () => {
+  /**
+   * Step 1 of getting a key: make sure a publisher record exists (from the authenticated
+   * session, never a stored id — a stale localStorage id here is exactly what used to 403
+   * a caller who had switched accounts in the same browser), then ask for the emailed
+   * step-up code. A key is issued only after that code comes back, in `confirmKey`.
+   */
+  const requestKey = async () => {
     setGenerating(true);
     setGenError(null);
     try {
-      // A publisher that already exists gets a fresh key (the old one stops working); a new
-      // account gets its first key from registration.
-      const existingId = publisher?.id || getPublisherId();
-      const result = existingId
-        ? await apiClient.rotateApiKey(existingId)
-        : await apiClient.registerPublisher({
-            name: user?.email ? user.email.split('@')[0] : 'My Publisher',
-          });
-      if (!result.api_key || !result.id) throw new Error('Server returned no key');
-      setPublisherId(result.id);
-      setApiKeyState(result.api_key);
-      setShowKey(true);
-      await refresh();
+      let pubId = publisher?.id;
+      if (!pubId) {
+        const created = await apiClient.registerPublisher({
+          name: user?.email ? user.email.split('@')[0] : 'My Publisher',
+        });
+        if (!created?.id) throw new Error('Server returned no publisher');
+        setPublisherId(created.id);
+        await refresh();
+        pubId = created.id;
+      }
+      await apiClient.requestApiKeyCode();
+      setCodeRequested(true);
     } catch (e: unknown) {
-      setGenError(errorMessage(e, 'Could not generate a key'));
+      setGenError(errorMessage(e, 'Could not send a verification code'));
     } finally {
       setGenerating(false);
+    }
+  };
+
+  /**
+   * Step 2: exchange the emailed code for a key. The key shown afterward comes only from
+   * this call's own response — never from another tab, and never assumed from a request that
+   * merely returned 200 elsewhere.
+   *
+   * On a timeout the request may still have committed server-side (rotation is one atomic
+   * UPDATE; the last commit wins regardless of whether this tab saw the response), so this
+   * never shows a key it did not itself receive — it tells the caller to rotate again instead
+   * of guessing.
+   */
+  const confirmKey = async () => {
+    const pubId = publisher?.id;
+    if (!pubId) {
+      setGenError('No publisher account on this session. Refresh and try again.');
+      return;
+    }
+    const code = stepUpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setGenError('Enter the 6-digit code we emailed you.');
+      return;
+    }
+    setConfirmingKey(true);
+    setGenError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const result = await apiClient.rotateApiKey(pubId, code, controller.signal);
+      if (!result.api_key || !result.id) throw new Error('Server returned no key');
+      setApiKeyState(result.api_key);
+      setShowKey(true);
+      setCodeRequested(false);
+      setStepUpCode('');
+      await refresh();
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setGenError(
+          'No response in time. Do not assume it worked — request a new code and rotate again; only a key shown here in this tab is valid.',
+        );
+      } else {
+        setGenError(errorMessage(e, 'Could not confirm that code'));
+      }
+    } finally {
+      clearTimeout(timeout);
+      setConfirmingKey(false);
     }
   };
 
@@ -520,7 +580,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
           <Pane title="API key" hint="Used by the Spigot CLI and SDKs to manage your endpoints.">
             <Row
               label="Secret key"
-              hint="Treat it like a password. Shown once: copy it now. Generating a new key disables the old one."
+              hint={
+                currentApiKey
+                  ? 'Treat it like a password. Shown once: copy it now.'
+                  : 'Needs an emailed code. Getting a new key immediately revokes any key shown in another tab, device or app — including one you have not copied yet.'
+              }
             >
               {currentApiKey ? (
                 <div className="flex items-center gap-2">
@@ -548,12 +612,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ publisherId }) => {
                     )}
                   </button>
                 </div>
+              ) : codeRequested ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label="Verification code"
+                    value={stepUpCode}
+                    onChange={e => setStepUpCode(e.target.value)}
+                    placeholder="6-digit code"
+                    inputMode="numeric"
+                  />
+                  <Button size="sm" isLoading={confirmingKey} onClick={confirmKey}>
+                    Confirm
+                  </Button>
+                </div>
               ) : (
-                <Button size="sm" isLoading={generating} onClick={generate}>
-                  {publisher?.id ? 'Generate new key' : 'Generate key'}
+                <Button size="sm" isLoading={generating} onClick={requestKey}>
+                  {publisher?.id ? 'Get a new key' : 'Get key'}
                 </Button>
               )}
             </Row>
+            {codeRequested && !currentApiKey && (
+              <Row label="">
+                <p className="m-0 text-xs text-muted">
+                  We emailed a code; it expires in 15 minutes.{' '}
+                  <button
+                    type="button"
+                    onClick={requestKey}
+                    disabled={generating}
+                    className="cursor-pointer border-0 bg-transparent p-0 text-xs text-muted underline disabled:cursor-default"
+                  >
+                    Resend code
+                  </button>
+                </p>
+              </Row>
+            )}
             {genError && (
               <Row label="">
                 <p role="alert" className="m-0 text-sm text-error">

@@ -71,8 +71,15 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
           logoUrl: data.logoUrl,
           githubUrl: data.githubUrl,
         });
-        updateData({ publisherId: result.id, apiKey: result.api_key });
-        setPublisherId(result.id!);
+        // Registration no longer returns a usable key (it needs an emailed step-up first,
+        // done in Settings), and a malformed or empty success body must not be treated as
+        // success: {}  and {id: 123} (non-string) both fail this check and fall to the catch
+        // below instead of advancing with a broken publisher id.
+        if (!result?.id || typeof result.id !== 'string') {
+          throw new Error('The server did not return a valid publisher ID');
+        }
+        updateData({ publisherId: result.id });
+        setPublisherId(result.id);
         onNext();
       } catch (err) {
         console.error(err);
