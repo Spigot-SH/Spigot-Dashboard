@@ -22,20 +22,20 @@ users visit.
 
 ## 2. Variables
 
-| Variable                               | Value                                       | Scope            |
-| -------------------------------------- | ------------------------------------------- | ---------------- |
-| `BACKEND_ORIGIN`                       | `http://backend.railway.internal:4402`      | server-side only |
-| `NEXT_PUBLIC_ALGORAND_NETWORK_PROFILE` | `testnet`                                   | browser          |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`         | same as backend `GOOGLE_CLIENT_ID`, if used | browser          |
-| `NEXT_PUBLIC_FIREBASE_API_KEY`         | from the Firebase console, or blank         | browser          |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`     | from the Firebase console, or blank         | browser          |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`      | from the Firebase console, or blank         | browser          |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`  | from the Firebase console, or blank         | browser          |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | from the Firebase console, or blank     | browser          |
-| `NEXT_PUBLIC_FIREBASE_APP_ID`          | from the Firebase console, or blank         | browser          |
-| `NEXT_PUBLIC_GATEWAY_URL`              | backend public URL, `https://…`             | browser          |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | from dashboard.reown.com, or blank          | browser          |
-| `NEXT_PUBLIC_APP_URL`                  | canonical app URL, or blank                 | browser          |
+| Variable                                   | Value                                       | Scope            |
+| ------------------------------------------ | ------------------------------------------- | ---------------- |
+| `BACKEND_ORIGIN`                           | `http://backend.railway.internal:4402`      | server-side only |
+| `NEXT_PUBLIC_ALGORAND_NETWORK_PROFILE`     | `testnet`                                   | browser          |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`             | same as backend `GOOGLE_CLIENT_ID`, if used | browser          |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`             | from the Firebase console, or blank         | browser          |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`         | from the Firebase console, or blank         | browser          |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`          | from the Firebase console, or blank         | browser          |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`      | from the Firebase console, or blank         | browser          |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | from the Firebase console, or blank         | browser          |
+| `NEXT_PUBLIC_FIREBASE_APP_ID`              | from the Firebase console, or blank         | browser          |
+| `NEXT_PUBLIC_GATEWAY_URL`                  | backend public URL, `https://…`             | browser          |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`     | from dashboard.reown.com, or blank          | browser          |
+| `NEXT_PUBLIC_APP_URL`                      | canonical app URL, or blank                 | browser          |
 
 - All six `NEXT_PUBLIC_FIREBASE_*` variables are required together for "Continue with Google".
   There is no built-in fallback project: leave any one blank and the button disables itself with
