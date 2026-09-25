@@ -39,3 +39,23 @@ export const shouldShowLoadingSpinner = (
 ): boolean => loading || (!hasStats && !isProviderAccessBlocked);
 
 export const canOpenTutorial = (tutorialUnlocked: boolean): boolean => tutorialUnlocked === true;
+
+/**
+ * f40d.txt (Codex REJECT): "src/views/Dashboard.tsx:371-372: Do not let needsAccount block
+ * Explore and Connectors for an unapproved user without a publisher."
+ *
+ * The old gate was `isProviderAccessBlocked && (needsAccount || sectionIsGated)`. Once
+ * `needsAccount` was true — a provider-access-blocked account that has not created a publisher
+ * yet — the `needsAccount ||` short-circuited the check to true for every section, so the
+ * full-screen `ProviderAccessLockedCard` replaced Explore, Connectors and Settings too, although
+ * the comment right beside that render (Dashboard.tsx) already says those three "stay reachable
+ * either way: none of them are provider-gated on the backend." Only `apis`, `analytics` and
+ * `overview` read gated figures or provider-only writes, so `needsAccount` no longer matters
+ * here at all — whether the locked card shows depends only on the section.
+ */
+const PROVIDER_ACCESS_LOCKED_SECTIONS = ['apis', 'analytics', 'overview'];
+
+export const shouldShowProviderAccessLockedCard = (
+  isProviderAccessBlocked: boolean,
+  activeSection: string,
+): boolean => isProviderAccessBlocked && PROVIDER_ACCESS_LOCKED_SECTIONS.includes(activeSection);

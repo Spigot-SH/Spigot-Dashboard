@@ -39,7 +39,11 @@ import { Logo } from '../components/common/Logo';
 import { runUnlockFlow } from './dashboardUnlock';
 import { runProviderAccessRequestFlow } from './providerAccessFlow';
 import { isProviderAccessBlocked as computeProviderAccessBlocked } from './providerAccessGate';
-import { shouldShowLoadingSpinner, canOpenTutorial } from './dashboardGates';
+import {
+  shouldShowLoadingSpinner,
+  canOpenTutorial,
+  shouldShowProviderAccessLockedCard,
+} from './dashboardGates';
 
 interface DashboardProps {
   /** Supplied by the route segment, which reads the param server-side and passes it down. */
@@ -368,8 +372,7 @@ const Dashboard: React.FC<DashboardProps> = ({ publisherId, section }) => {
                 never blurred real content standing in front of it, and never a generic
                 load-failure message in its place. Explore, Connectors and Settings stay
                 reachable either way: none of them are provider-gated on the backend. */}
-            {isProviderAccessBlocked &&
-            (needsAccount || ['apis', 'analytics', 'overview'].includes(activeSection)) ? (
+            {shouldShowProviderAccessLockedCard(isProviderAccessBlocked, activeSection) ? (
               <ProviderAccessLockedCard
                 providerAccess={providerAccess}
                 onRequestAccess={handleRequestProviderAccess}

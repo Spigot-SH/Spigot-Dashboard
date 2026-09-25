@@ -20,7 +20,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 const modulePath = ['../src/views/dashboardGates', '.ts'].join('');
-const { shouldShowLoadingSpinner, canOpenTutorial } = await import(modulePath);
+const { shouldShowLoadingSpinner, canOpenTutorial, shouldShowProviderAccessLockedCard } =
+  await import(modulePath);
 
 describe('shouldShowLoadingSpinner', () => {
   test('still loading (auth not resolved yet): always show the spinner', () => {
@@ -54,4 +55,26 @@ describe('canOpenTutorial', () => {
   test('an unlocked account may open the tutorial', () => {
     assert.equal(canOpenTutorial(true), true);
   });
+});
+
+describe('shouldShowProviderAccessLockedCard', () => {
+  test('not blocked: never show the locked card, on any section', () => {
+    assert.equal(shouldShowProviderAccessLockedCard(false, 'overview'), false);
+    assert.equal(shouldShowProviderAccessLockedCard(false, 'explore'), false);
+  });
+
+  for (const section of ['apis', 'analytics', 'overview']) {
+    test(`blocked on a gated section (${section}): show the locked card`, () => {
+      assert.equal(shouldShowProviderAccessLockedCard(true, section), true);
+    });
+  }
+
+  for (const section of ['explore', 'connectors', 'settings']) {
+    test(`blocked with no publisher yet, on an always-reachable section (${section}): no locked card`, () => {
+      // Regression (f40d.txt): the old gate also checked `needsAccount`, so a blocked account
+      // with no publisher yet got the locked card here too. This function takes no
+      // `needsAccount` parameter at all now — only the section decides.
+      assert.equal(shouldShowProviderAccessLockedCard(true, section), false);
+    });
+  }
 });

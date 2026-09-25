@@ -57,12 +57,12 @@ export const TutorialLockedCard: React.FC<TutorialLockedCardProps> = ({
           </div>
 
           <div>
-            <h2 className="text-lg font-bold text-main">
-              Unlock Spigot MCP Tutorial & Dashboard Access
-            </h2>
+            {/* f40d.txt (Codex REJECT): this unlock only ever gated the MCP tutorial —
+                TUTORIAL_GATE_ENABLED (Spigot-Algorand) never touched dashboard access, so the
+                old copy promised something the $1.50 charge does not do. */}
+            <h2 className="text-lg font-bold text-main">Unlock the Spigot MCP Tutorial</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted">
-              Add credit to unlock the Spigot MCP connector tutorial for Claude.ai and OpenCode, and activate
-              full dashboard access.
+              Add credit to unlock the Spigot MCP connector tutorial for Claude.ai and OpenCode.
             </p>
           </div>
 
@@ -73,13 +73,9 @@ export const TutorialLockedCard: React.FC<TutorialLockedCardProps> = ({
               <span className="font-semibold font-mono text-main">{formatCredit(balance)}</span>
             </div>
             {hasEnoughCredit ? (
-              <span className="text-success text-xs font-medium">
-                ✓ Ready to unlock
-              </span>
+              <span className="text-success text-xs font-medium">✓ Ready to unlock</span>
             ) : (
-              <span className="text-muted text-xs">
-                Add credit to unlock
-              </span>
+              <span className="text-muted text-xs">Add credit to unlock</span>
             )}
           </div>
         </div>
