@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { buildContentSecurityPolicy } from './src/lib/csp';
 
 /**
  * Wallet adapters `@txnlab/use-wallet` imports but this app never registers.
@@ -65,23 +66,44 @@ const nextConfig: NextConfig = {
    * The app signs people in and moves money, so it must not be framed (clickjacking on
    * withdraw, settle or payout forms) and must not be sniffed or leak full URLs in Referer.
    *
-   * Codex round 2 (follows up c3805b4): traced the Razorpay card flow in
-   * `src/credits/TopUpPanel.tsx` (`payByCard`, `RAZORPAY_SRC`) end to end. `new
-   * window.Razorpay(...).open()` renders Razorpay's payment UI, including card 3-D Secure and
-   * netbanking/UPI redirects, inside an iframe that Razorpay itself hosts and serves headers
-   * for — the dashboard document never submits a form to Razorpay or any other cross-origin
-   * target (the handler callback only calls our own `/api/credits/razorpay/verify-payment`), so
-   * `form-action 'self'` already covers it and needs no change. `grep -rn "iframe" src` finds
-   * none, so Razorpay is the only frame this app ever opens:
-   * - frame-src: checkout.razorpay.com and api.razorpay.com are where that overlay is served
-   *   from, both observed in Razorpay's own checkout.js.
-   * script-src and connect-src stay unset. `npm run build` fails in this checkout (`firebase`
-   * is not installed, matching the finding in c3805b4), so a script-src could not be verified
-   * against this app's own inline hydration scripts (Next's App Router streams React Server
-   * Component data via inline `<script>` tags, which an un-nonced script-src blocks) or against
-   * Firebase auth and the WalletConnect relay, both of which call out from this document same
-   * as Razorpay's checkout.js does. Locking either of those down needs the browser-tested pass
-   * this file already called for.
+   * Codex round 3 (follows up c3805b4+dac9c95): round 2's frame-src was Razorpay-only, which
+   * broke Google sign-in — `signInWithPopup` (src/auth/SignInPanel.tsx) opens a same-document
+   * helper iframe at the configured Firebase auth domain, and a CSP that does not list that
+   * domain silently blocks it. `buildContentSecurityPolicy` (src/lib/csp.ts) now builds
+   * frame-src from `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` so that iframe is allowed whenever
+   * Firebase is configured, and adds nothing when it is not (`firebaseConfigured` in
+   * src/lib/firebase.ts already hides "Continue with Google" in that case). See src/lib/csp.ts
+   * for the full evidence trail: why the Razorpay origin changed to `api.razorpay.com` only,
+   * why script-src/connect-src still don't need Firebase's `apis.google.com` /
+   * `identitytoolkit.googleapis.com` / `securetoken.googleapis.com` while they stay unset, and
+   * why `accounts.google.com` needs nothing here (Firebase's OAuth handshake opens in a new
+   * window via `window.open`, not an iframe, so frame-src does not govern it).
+   *
+   * form-action 'self': `payByCard` (src/credits/TopUpPanel.tsx) never submits a document-level
+   * form to Razorpay. `new window.Razorpay(...).open()` renders card 3-D Secure and
+   * netbanking/UPI entirely inside the iframe above (confirmed live below); completion comes
+   * back through that iframe's `handler` callback, which calls only our own
+   * `/api/credits/razorpay/verify-payment`. `grep -rn "iframe" src` finds no other iframe or
+   * cross-origin form in this app, so `form-action 'self'` needs no change.
+   *
+   * Live check: `npm ci` (Node 22) installs `firebase`, fixing the typecheck failure round 1
+   * and round 2 hit; `npm run build` and `npm start` succeed with this CSP, and `curl -sI` on
+   * the running app shows the header this function actually produces. A full real sign-in
+   * end to end could not be checked — no Firebase project is configured in this environment
+   * (`.env.local` does not exist here) — but the two mechanisms this fix touches were each
+   * checked live: Razorpay's real `checkout.js` opened its checkout with zero CSP violations
+   * against `frame-src https://api.razorpay.com` alone, and a page appending the exact iframe
+   * `_openIframe()` builds (`<iframe src="https://<authDomain>/__/auth/iframe">`) loaded clean
+   * once that origin was added to frame-src. A negative control for each — an unrelated
+   * frame-src for Razorpay, round 2's actual shipped frame-src (Razorpay only) for Firebase —
+   * reproduced the exact blocks Codex is asking about, proving the checks themselves detect a
+   * block rather than passing by accident. Details, and the static trace of `checkout.js` that
+   * led to dropping `checkout.razorpay.com` from frame-src, are in src/lib/csp.ts.
+   *
+   * `headers()` is resolved once at `next build` (confirmed here: restarting `next start` with
+   * `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` newly set did not change the served header; rebuilding
+   * did), same as `BACKEND_ORIGIN` below — the auth domain must be set before `npm run build`,
+   * not just before `npm start` or at deploy restart.
    */
   async headers() {
     return [
@@ -90,9 +112,9 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value:
-              "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'; " +
-              'frame-src https://checkout.razorpay.com https://api.razorpay.com',
+            value: buildContentSecurityPolicy({
+              firebaseAuthDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+            }),
           },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000' },
