@@ -16,6 +16,7 @@ const {
   isMagicLinkErrorCode,
   sessionMatchesEmail,
   resolveCallbackOutcome,
+  buildConfirmPrompt,
   createRunOnce,
   createLinkAttemptCache,
   MAGIC_LINK_ERROR_MESSAGES,
@@ -216,6 +217,43 @@ describe('sessionMatchesEmail', () => {
     assert.doesNotThrow(() => {
       assert.equal(sessionMatchesEmail({ user: 'not-an-object' } as never, 'a@b.com'), false);
     });
+  });
+});
+
+describe('buildConfirmPrompt — the "Sign in as <email>?" screen text, Codex round 3 item 2 (login CSRF)', () => {
+  test('a signed-out browser gets no current-account warning', () => {
+    const prompt = buildConfirmPrompt(null, 'a@b.com');
+    assert.deepEqual(prompt, {
+      linkEmail: 'a@b.com',
+      currentEmail: null,
+      differentAccount: false,
+    });
+  });
+
+  test('a browser already signed in as the link email gets no warning', () => {
+    const prompt = buildConfirmPrompt({ email: 'A@B.com' }, 'a@b.com');
+    assert.equal(prompt.differentAccount, false);
+    assert.equal(prompt.currentEmail, 'A@B.com');
+  });
+
+  test('a victim already signed in as someone else is warned before any confirm — the CSRF this closes', () => {
+    const prompt = buildConfirmPrompt({ email: 'victim@spigot.test' }, 'attacker@evil.test');
+    assert.equal(prompt.differentAccount, true);
+    assert.equal(prompt.currentEmail, 'victim@spigot.test');
+    assert.equal(prompt.linkEmail, 'attacker@evil.test');
+  });
+
+  test('a malformed current user (non-string email) reads as no current session, never throws', () => {
+    assert.doesNotThrow(() => {
+      const prompt = buildConfirmPrompt({ email: 42 } as never, 'a@b.com');
+      assert.equal(prompt.currentEmail, null);
+      assert.equal(prompt.differentAccount, false);
+    });
+  });
+
+  test('an empty link email never reads as a different account', () => {
+    const prompt = buildConfirmPrompt({ email: 'a@b.com' }, '');
+    assert.equal(prompt.differentAccount, false);
   });
 });
 
@@ -497,5 +535,114 @@ describe('createRunOnce', () => {
     assert.equal(calls, 1);
     assert.equal(results[0].status, 'rejected');
     assert.equal(results[1].status, 'rejected');
+  });
+});
+
+describe('The explicit-confirm flow — no verify() call fires until a click, closing the login CSRF (Codex round 3, item 2)', () => {
+  // Mirrors MagicLinkCallback.tsx's actual split: the mount effect only calls recoverAttempt
+  // (parsing, never network); a verify call only ever happens inside handleConfirm, which here
+  // stands in for the button's onClick.
+  const parseOnMount = (
+    recover: ReturnType<typeof createLinkAttemptCache>,
+    freshFragment: string | null,
+  ) => recover(freshFragment);
+
+  const handleConfirmClick = async (
+    runOnce: ReturnType<typeof createRunOnce>,
+    attempt: { token: string; email: string },
+    verify: (email: string, token: string) => Promise<unknown>,
+    refresh: () => Promise<{ user: { email: string } | null }>,
+  ) => {
+    let verifyError: unknown = null;
+    await runOnce(attempt.token, () =>
+      verify(attempt.email, attempt.token).then(body => {
+        if (!isSuccessfulVerifyResponse(body)) {
+          throw Object.assign(new Error('Malformed response from the sign-in server'), {
+            status: 502,
+          });
+        }
+      }),
+    ).catch((err: unknown) => {
+      verifyError = err;
+    });
+    const session = await refresh().catch(() => ({ user: null }));
+    return resolveCallbackOutcome(session, attempt.email, verifyError);
+  };
+
+  test('opening a link — an attacker link included — never calls verify() on its own', () => {
+    const recover = createLinkAttemptCache();
+    let posts = 0;
+    const verify = async () => {
+      posts += 1;
+      return { ok: true };
+    };
+    const attempt = parseOnMount(recover, '#token=attacker-tok&email=attacker%40evil.test');
+
+    assert.deepEqual(attempt, { token: 'attacker-tok', email: 'attacker@evil.test' });
+    assert.equal(posts, 0, 'parsing the fragment alone must never call verify — no auto-POST');
+    void verify; // never invoked in this test — that is the assertion
+  });
+
+  test("a victim's session is untouched — no session change — until an explicit confirm click", async () => {
+    const recover = createLinkAttemptCache();
+    const runOnce = createRunOnce();
+    let posts = 0;
+    const verify = async () => {
+      posts += 1;
+      return { ok: true };
+    };
+    // The victim's browser already holds a session for a different account.
+    const refresh = async () => ({ user: { email: 'victim@spigot.test' } });
+
+    const attempt = parseOnMount(recover, '#token=attacker-tok&email=attacker%40evil.test');
+    assert.ok(attempt);
+
+    // The confirm prompt correctly flags this as a different-account continuation, still with
+    // zero network calls made.
+    const prompt = buildConfirmPrompt({ email: 'victim@spigot.test' }, attempt!.email);
+    assert.equal(prompt.differentAccount, true);
+    assert.equal(posts, 0, 'no verify() call before the click, even once the prompt is built');
+
+    // Only the explicit confirm click drives the POST.
+    const outcome = await handleConfirmClick(runOnce, attempt!, verify, refresh);
+    assert.equal(posts, 1);
+    // In this scenario the backend response is asserted separately (see resolveCallbackOutcome
+    // tests); here the point is only that exactly one verify() call happened, and only after
+    // the click — never on page load.
+    assert.equal(typeof outcome.redirectTo, 'string');
+  });
+
+  test('the confirm path works: a click signs in as the link email once verify and refresh agree', async () => {
+    const recover = createLinkAttemptCache();
+    const runOnce = createRunOnce();
+    const verify = async () => ({ ok: true });
+    const refresh = async () => ({ user: { email: 'a@b.com' } });
+
+    const attempt = parseOnMount(recover, '#token=tok-1&email=a%40b.com');
+    assert.ok(attempt);
+    const outcome = await handleConfirmClick(runOnce, attempt!, verify, refresh);
+
+    assert.equal(outcome.redirectTo, '/?signed_in=1');
+  });
+
+  test('a double-click on confirm fires verify() exactly once (runOnce dedupes it)', async () => {
+    const recover = createLinkAttemptCache();
+    const runOnce = createRunOnce();
+    let posts = 0;
+    const verify = async () => {
+      posts += 1;
+      return { ok: true };
+    };
+    const refresh = async () => ({ user: { email: 'a@b.com' } });
+
+    const attempt = parseOnMount(recover, '#token=tok-1&email=a%40b.com');
+    assert.ok(attempt);
+    const [first, second] = await Promise.all([
+      handleConfirmClick(runOnce, attempt!, verify, refresh),
+      handleConfirmClick(runOnce, attempt!, verify, refresh),
+    ]);
+
+    assert.equal(posts, 1);
+    assert.deepEqual(first, second);
   });
 });

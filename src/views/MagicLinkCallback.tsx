@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
@@ -10,9 +10,11 @@ import {
   MAGIC_LINK_MEMORY_STASH_KEY,
   isSuccessfulVerifyResponse,
   resolveCallbackOutcome,
+  buildConfirmPrompt,
   createRunOnce,
   createLinkAttemptCache,
   type MinimalSession,
+  type MagicLinkFragment,
 } from '../lib/magicLinkFlow';
 
 /**
@@ -22,10 +24,21 @@ import {
  * to any server, so it never lands in an edge or access log — unlike a `?token=` query string.
  * The root layout's `beforeInteractive` script (`src/app/layout.tsx`) moves that fragment into
  * sessionStorage before this page's own bundle, or anything else on the page, can read it; this
- * component reads it from there, POSTs it to the backend exactly once, and only routes into the
- * app once a *refreshed* shared session actually matches the email the link was for. See
- * `src/lib/magicLinkFlow.ts` for the pure pieces this is built from and why each one exists —
- * this file is orchestration only.
+ * component reads it from there, but — unlike the version Codex round 3 rejected — never POSTs
+ * it on its own.
+ *
+ * Reading and even holding a valid token is not the same as proof the person in front of this
+ * browser is the one who asked for it: an attacker can get their *own* valid link opened in a
+ * victim's browser (an auto-navigated redirect, an `<img>`-style load, a link shared as
+ * "click this"), and a page that POSTs on load would sign that browser into the attacker's
+ * account with no action from the victim at all — replacing whatever session was already there.
+ * So this page only ever parses the fragment on mount; the POST to
+ * `POST /auth/magic-link/callback` fires from nowhere except an explicit click on the "Sign in
+ * as `<email>`?" screen's Continue button, rendered below once the fragment is parsed and the
+ * shared session is known. If a different account is already signed in, that screen says so
+ * before the click can replace it. See `src/lib/magicLinkFlow.ts` for the pure pieces this is
+ * built from (`buildConfirmPrompt` in particular) and why each one exists — this file is
+ * orchestration only.
  */
 
 // Module-level, not component state: shared by every mount of this component within one page
@@ -35,15 +48,19 @@ import {
 // page without a reload) both re-run the effect against the *same* module instance:
 // `recoverAttempt` recovers the token/email even after the stash that carried them has already
 // been consumed, and `runOnce` shares the first call's promise for that token instead of firing
-// a second POST. A second, distinct link opened in the same document gets a fresh token, so
-// both recover its own attempt and run their own POST — neither is keyed on "has anything run
-// yet", only on the token.
+// a second POST from a double-click on Continue. A second, distinct link opened in the same
+// document gets a fresh token, so both recover its own attempt and run their own POST — neither
+// is keyed on "has anything run yet", only on the token.
 const recoverAttempt = createLinkAttemptCache();
 const runOnce = createRunOnce<void>();
 
+type Status = 'parsing' | 'confirm' | 'submitting';
+
 export default function MagicLinkCallback() {
   const router = useRouter();
-  const { refresh } = useAuth();
+  const { user, loading: authLoading, refresh } = useAuth();
+  const [status, setStatus] = useState<Status>('parsing');
+  const [attempt, setAttempt] = useState<MagicLinkFragment | null>(null);
 
   useEffect(() => {
     const stashed = readAndClearStash();
@@ -59,14 +76,20 @@ export default function MagicLinkCallback() {
 
     // recoverAttempt remembers the last fragment it was given something for, so a repeat
     // invocation that found nothing live still gets the attempt already keyed into `runOnce` —
-    // see createLinkAttemptCache's doc comment.
+    // see createLinkAttemptCache's doc comment. Parsing never POSTs anything on its own.
     const parsed = recoverAttempt(stashed || memory || liveHash || null);
     if (!parsed) {
       router.replace('/login?auth_error=invalid');
       return;
     }
-    const { token, email } = parsed;
+    setAttempt(parsed);
+    setStatus('confirm');
+  }, [router]);
 
+  const handleConfirm = () => {
+    if (!attempt) return;
+    setStatus('submitting');
+    const { token, email } = attempt;
     void runOnce(token, () =>
       authApi.verifyMagicLink(email, token).then(body => {
         if (!isSuccessfulVerifyResponse(body)) {
@@ -78,11 +101,43 @@ export default function MagicLinkCallback() {
     )
       .then(() => finishWithSession(email, refresh, router, null))
       .catch((err: unknown) => finishWithSession(email, refresh, router, err));
-  }, [router, refresh]);
+  };
+
+  // Wait for the shared session to load before showing the confirm screen: `buildConfirmPrompt`
+  // needs the *real* currently-signed-in account to warn accurately about replacing it, not the
+  // brief window where the provider has not fetched `/auth/me` yet.
+  if (status !== 'confirm' || !attempt || authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner
+          size={24}
+          className="text-muted"
+          label={status === 'submitting' ? 'Signing you in' : undefined}
+        />
+      </div>
+    );
+  }
+
+  const prompt = buildConfirmPrompt(user, attempt.email);
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Spinner size={24} className="text-muted" label="Signing you in" />
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-panel p-6 text-center shadow-sm">
+        {prompt.differentAccount && (
+          <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+            You are signed in as {prompt.currentEmail}. Continuing replaces that session.
+          </p>
+        )}
+        <h1 className="mb-1 text-lg font-semibold text-main">Sign in as {attempt.email}?</h1>
+        <p className="mb-5 text-sm text-muted">Only continue if you opened this link yourself.</p>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-lg border border-transparent bg-main px-4 py-3 text-sm font-medium text-bg hover:opacity-90"
+        >
+          Continue
+        </button>
+      </div>
     </div>
   );
 }
@@ -115,7 +170,7 @@ const readAndClearMemoryStash = (): string | null => {
  *   not whatever stale or wrong-user session the provider held before this page loaded — the
  *   regression this change exists to close.
  * - A *failed* POST is not proof nothing happened: a dropped response, a second tab that lost
- *   the race on the single-use token, or Strict Mode's replayed effect can all land here after
+ *   the race on the single-use token, or a double-click on Continue can all land here after
  *   the backend already consumed the token and set the cookie. Checking the real session before
  *   showing an error is what keeps that browser from being told a link is invalid when it is
  *   already signed in.

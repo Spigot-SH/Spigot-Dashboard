@@ -10,6 +10,10 @@
  * fragment could be read and POSTed more than once (React Strict Mode's double effect, a
  * remount, two tabs); and a failed POST put arbitrary backend text into `?auth_error=`, which
  * `SignInPanel.tsx` never displayed.
+ *
+ * A third review (Codex round 3) found a login CSRF: the callback POSTed automatically on load,
+ * so opening someone else's valid magic link replaced your session with theirs. `buildConfirmPrompt`
+ * below backs the fix — an explicit "Sign in as `<email>`?" confirm step that the POST now waits on.
  */
 
 /**
@@ -151,6 +155,39 @@ export const sessionMatchesEmail = (session: MinimalSession, email: string): boo
     email &&
     sessionEmail.toLowerCase() === email.toLowerCase(),
   );
+};
+
+/**
+ * Text state for the "Sign in as `<email>`?" confirm screen (`MagicLinkCallback.tsx`).
+ *
+ * Before this, the callback POSTed the token to the backend the instant the page loaded, with
+ * no action from the person in between. A victim who opened an attacker's own valid magic
+ * link — sent to the victim over any channel the attacker controls, e.g. embedded as an
+ * `<img>` or auto-navigated — got their session silently replaced by the attacker's account:
+ * nothing distinguished "I clicked the link my own inbox sent me" from "a link I never
+ * requested just loaded in my browser" (Codex round 3, item 2, the login-CSRF finding this
+ * closes). The POST now only fires from an explicit click on that screen's Continue button; this
+ * function only decides what the screen says, so it is testable without React.
+ */
+export interface ConfirmPromptState {
+  linkEmail: string;
+  /** The browser's currently signed-in email, or `null` when signed out or not yet known. */
+  currentEmail: string | null;
+  /** True when continuing would replace a session for a different, already-signed-in account. */
+  differentAccount: boolean;
+}
+
+/** Never throws: a malformed `currentUser.email` (a non-string, from a partial `/auth/me`) reads
+ * as "no current session" rather than crashing the confirm screen. */
+export const buildConfirmPrompt = (
+  currentUser: { email: string } | null | undefined,
+  linkEmail: string,
+): ConfirmPromptState => {
+  const currentEmail = typeof currentUser?.email === 'string' ? currentUser.email : null;
+  const differentAccount = Boolean(
+    currentEmail && linkEmail && currentEmail.toLowerCase() !== linkEmail.toLowerCase(),
+  );
+  return { linkEmail, currentEmail, differentAccount };
 };
 
 /** Where the callback sends the browser once the POST has settled and the session is refreshed. */
