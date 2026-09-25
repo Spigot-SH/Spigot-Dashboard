@@ -7,11 +7,11 @@ import { useAuth } from '../auth/AuthContext';
 import { Spinner } from '../components/common/Spinner';
 import {
   MAGIC_LINK_FRAGMENT_STASH_KEY,
-  parseMagicLinkFragment,
+  MAGIC_LINK_MEMORY_STASH_KEY,
   isSuccessfulVerifyResponse,
-  classifyVerifyError,
-  sessionMatchesEmail,
+  resolveCallbackOutcome,
   createRunOnce,
+  createLinkAttemptCache,
   type MinimalSession,
 } from '../lib/magicLinkFlow';
 
@@ -29,12 +29,16 @@ import {
  */
 
 // Module-level, not component state: shared by every mount of this component within one page
-// load. React Strict Mode runs this effect's body twice per mount in dev (`started` is the same
-// closed-over variable both times, so the second run no-ops); a real remount — routed away from
-// and back to this page without a reload — creates a new component instance but not a new
-// module, so `runOnce` below still has the first mount's promise cached and the POST to
-// `/auth/magic-link/callback` still only goes out once per page load.
-let started = false;
+// load, and keyed by the link's token rather than gated by a single flag — see
+// createLinkAttemptCache's and createRunOnce's doc comments in lib/magicLinkFlow.ts. React
+// Strict Mode's dev-only double effect and a real remount (routed away from and back to this
+// page without a reload) both re-run the effect against the *same* module instance:
+// `recoverAttempt` recovers the token/email even after the stash that carried them has already
+// been consumed, and `runOnce` shares the first call's promise for that token instead of firing
+// a second POST. A second, distinct link opened in the same document gets a fresh token, so
+// both recover its own attempt and run their own POST — neither is keyed on "has anything run
+// yet", only on the token.
+const recoverAttempt = createLinkAttemptCache();
 const runOnce = createRunOnce<void>();
 
 export default function MagicLinkCallback() {
@@ -42,19 +46,21 @@ export default function MagicLinkCallback() {
   const { refresh } = useAuth();
 
   useEffect(() => {
-    if (started) return;
-    started = true;
-
     const stashed = readAndClearStash();
-    // Nothing was stashed — the guard script did not run (a cached HTML shell from before this
-    // change is the only case this happens in production). Fall back to the live fragment and
-    // clear it here instead, same as the guard script does.
-    const hash = stashed ?? window.location.hash;
-    if (!stashed && window.location.hash) {
+    const memory = readAndClearMemoryStash();
+    // Nothing was stashed — either the guard script did not run (a cached HTML shell from
+    // before this change), or this is a repeat invocation after the first already consumed both
+    // stashes (Strict Mode's double effect, or a remount). Fall back to the live fragment, and
+    // clear it here the same way the guard script does when it finds one.
+    const liveHash = !stashed && !memory ? window.location.hash : '';
+    if (liveHash) {
       window.history.replaceState({}, '', window.location.pathname + window.location.search);
     }
 
-    const parsed = parseMagicLinkFragment(hash || '');
+    // recoverAttempt remembers the last fragment it was given something for, so a repeat
+    // invocation that found nothing live still gets the attempt already keyed into `runOnce` —
+    // see createLinkAttemptCache's doc comment.
+    const parsed = recoverAttempt(stashed || memory || liveHash || null);
     if (!parsed) {
       router.replace('/login?auth_error=invalid');
       return;
@@ -91,6 +97,14 @@ const readAndClearStash = (): string | null => {
   }
 };
 
+/** The guard script's fallback stash for when `sessionStorage.setItem` threw. */
+const readAndClearMemoryStash = (): string | null => {
+  const win = window as unknown as Record<string, unknown>;
+  const value = win[MAGIC_LINK_MEMORY_STASH_KEY];
+  win[MAGIC_LINK_MEMORY_STASH_KEY] = undefined;
+  return typeof value === 'string' && value ? value : null;
+};
+
 /**
  * Whether the POST above threw or not, the only thing allowed to send this browser into the app
  * is a *freshly refreshed* session that matches the link's email — never the POST's own
@@ -105,6 +119,9 @@ const readAndClearStash = (): string | null => {
  *   the backend already consumed the token and set the cookie. Checking the real session before
  *   showing an error is what keeps that browser from being told a link is invalid when it is
  *   already signed in.
+ *
+ * The routing decision itself lives in `resolveCallbackOutcome` (lib/magicLinkFlow.ts), so it
+ * can be tested without React or `window`; this is orchestration only.
  */
 const finishWithSession = (
   email: string,
@@ -115,12 +132,6 @@ const finishWithSession = (
   void refresh()
     .catch(() => ({ user: null }) as MinimalSession)
     .then(session => {
-      if (sessionMatchesEmail(session, email)) {
-        router.replace('/?signed_in=1');
-        return;
-      }
-      const code = verifyError === null ? 'invalid' : classifyVerifyError(verifyError);
-      const emailParam = code === 'coming_soon' ? `&email=${encodeURIComponent(email)}` : '';
-      router.replace(`/login?auth_error=${code}${emailParam}`);
+      router.replace(resolveCallbackOutcome(session, email, verifyError).redirectTo);
     });
 };

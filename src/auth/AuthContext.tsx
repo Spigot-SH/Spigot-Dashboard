@@ -1,9 +1,18 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { authApi, SessionState, AuthUser, PublisherInfo, WalletInfo, Balances } from '../api/auth';
 import { clearAuth, clearLegacyApiKey } from '../api/client';
 import { SIGNED_OUT_STATE, parseSessionState } from './sessionState';
+import { createRefreshSequencer } from './authRefreshSequence';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -48,18 +57,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(true);
   const [signInOpen, setSignInOpen] = useState(false);
+  // One sequencer per provider instance, kept in a ref so `refresh` does not need to depend on
+  // it (a new sequencer on every render would defeat the guard). See authRefreshSequence.ts:
+  // an older `/auth/me` in flight when a newer refresh() starts must never apply its state,
+  // however the two happen to resolve.
+  const sequencer = useRef(createRefreshSequencer()).current;
 
   const refresh = useCallback(async (): Promise<SessionState> => {
+    const ticket = sequencer.start();
     let next: SessionState;
     try {
       next = parseSessionState(await authApi.me());
     } catch {
       next = SIGNED_OUT_STATE;
     }
-    setState(next);
-    setLoading(false);
+    // A newer refresh() call started (and possibly already resolved) while this one was in
+    // flight — its response is stale and must not overwrite the newer one's state, whichever
+    // order the network delivered them in.
+    if (sequencer.isCurrent(ticket)) {
+      setState(next);
+      setLoading(false);
+    }
     return next;
-  }, []);
+  }, [sequencer]);
 
   useEffect(() => {
     // Runs on every app load, not only at sign-out: a browser that is already signed in when

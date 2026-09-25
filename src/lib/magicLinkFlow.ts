@@ -19,6 +19,16 @@
  */
 export const MAGIC_LINK_FRAGMENT_STASH_KEY = 'spigot_magic_link_fragment';
 
+/**
+ * The `window` property the guard script falls back to when `sessionStorage.setItem` throws
+ * (private mode, disabled storage, a full quota). The URL fragment is always cleared first, in
+ * the same synchronous pass, regardless of which of these two stashes succeeds — see the guard
+ * script in `src/app/layout.tsx` for why order matters here. A page-lifetime variable does not
+ * survive a hard reload, but neither does the guard script's own run, so a reload always means a
+ * fresh magic-link POST from the email link, not a lost token.
+ */
+export const MAGIC_LINK_MEMORY_STASH_KEY = '__spigotMagicLinkFragment';
+
 /** The fragment a magic-link email points at: `#token=...&email=...`. */
 export interface MagicLinkFragment {
   token: string;
@@ -123,14 +133,52 @@ export interface MinimalSession {
  * or was signed out and had not refreshed yet — could reach `router.replace('/?signed_in=1')`
  * before its state reflected the session the backend had just created. Only a refresh that
  * matches the target email counts as "this callback signed this browser in."
+ *
+ * `session.user` is cast, not parsed, at its source (`AuthContext.tsx`'s `refresh` calls
+ * `parseSessionState`, which only checks `raw.user` is an object, then casts it straight to
+ * `AuthUser` — same gap `parseSessionState`'s own doc comment calls out for `tutorialUnlocked`).
+ * A malformed or partial `/auth/me` — `user.email` missing, `null`, or a number — must not throw
+ * out of `.toLowerCase()` here: `MagicLinkCallback.tsx` calls this inside a `.then()` with no
+ * following `.catch()`, so an uncaught throw silently drops the callback's promise chain and
+ * leaves the browser on the spinner forever instead of routing to an error. `typeof` first, so a
+ * non-string `email` reads as "does not match" instead of throwing.
  */
-export const sessionMatchesEmail = (session: MinimalSession, email: string): boolean =>
-  Boolean(
-    session.user &&
-    session.user.email &&
+export const sessionMatchesEmail = (session: MinimalSession, email: string): boolean => {
+  const sessionEmail: unknown = session.user?.email;
+  return Boolean(
+    typeof sessionEmail === 'string' &&
+    sessionEmail &&
     email &&
-    session.user.email.toLowerCase() === email.toLowerCase(),
+    sessionEmail.toLowerCase() === email.toLowerCase(),
   );
+};
+
+/** Where the callback sends the browser once the POST has settled and the session is refreshed. */
+export interface CallbackOutcome {
+  redirectTo: string;
+}
+
+/**
+ * The decision half of `MagicLinkCallback.tsx`'s `finishWithSession`, pulled out so it can run
+ * under Node's own test runner (no JSX, no `window`) — same pattern as
+ * `src/views/dashboardUnlock.ts`'s `runUnlockFlow`. Takes the *refreshed* session (never the
+ * POST's own resolution — see `sessionMatchesEmail`'s doc comment) plus whatever the POST threw,
+ * or `null` when it did not throw, and returns where to send the browser. Never throws: a
+ * malformed `refreshedSession` reads as "does not match" through `sessionMatchesEmail` and ends
+ * on the `/login?auth_error=` branch, not a crash mid-redirect.
+ */
+export const resolveCallbackOutcome = (
+  refreshedSession: MinimalSession,
+  email: string,
+  verifyError: unknown,
+): CallbackOutcome => {
+  if (sessionMatchesEmail(refreshedSession, email)) {
+    return { redirectTo: '/?signed_in=1' };
+  }
+  const code = verifyError === null ? 'invalid' : classifyVerifyError(verifyError);
+  const emailParam = code === 'coming_soon' ? `&email=${encodeURIComponent(email)}` : '';
+  return { redirectTo: `/login?auth_error=${code}${emailParam}` };
+};
 
 /**
  * Runs `fn` at most once per distinct `key`, sharing that single (still-pending or already
@@ -154,5 +202,37 @@ export const createRunOnce = <T>(): ((key: string, fn: () => Promise<T>) => Prom
     const started = fn();
     calls.set(key, started);
     return started;
+  };
+};
+
+/**
+ * Recovers the token/email for the link attempt an effect invocation should act on, replacing
+ * the old module-level `started` boolean in `MagicLinkCallback.tsx`. That boolean was not keyed
+ * by anything: once set, it blocked every later effect run, including a *second, distinct* link
+ * opened in the same document, not just a repeat of the first — the round-2 regression this
+ * closes.
+ *
+ * `freshFragment` is whatever the current invocation found live — the sessionStorage stash, the
+ * in-memory fallback, or `location.hash` — or `null` when none of those had anything, which
+ * happens on a repeat invocation after the first already consumed all three: React Strict
+ * Mode's dev-only double effect, or a genuine remount of the same attempt (routed away and back
+ * without a reload). A fresh, valid fragment always wins and becomes the remembered attempt,
+ * even when it names a different token, so a second link is never blocked by the first. Only
+ * when nothing fresh was found does this fall back to whatever attempt was last remembered,
+ * which is what lets a replay or remount reach the settled (or still in-flight) outcome of the
+ * attempt already keyed into `createRunOnce`'s map, instead of misreading "nothing left to
+ * read" as an invalid link.
+ */
+export const createLinkAttemptCache = (): ((
+  freshFragment: string | null,
+) => MagicLinkFragment | null) => {
+  let last: MagicLinkFragment | null = null;
+  return freshFragment => {
+    const parsed = freshFragment ? parseMagicLinkFragment(freshFragment) : null;
+    if (parsed) {
+      last = parsed;
+      return parsed;
+    }
+    return last;
   };
 };
