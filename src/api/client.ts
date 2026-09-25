@@ -1,3 +1,5 @@
+import { parseCheckResponse } from '../lib/domainVerification';
+
 /**
  * Always the relative '/api', which next.config.ts rewrites to the Express backend.
  *
@@ -330,14 +332,18 @@ export const apiClient = {
     return res.json();
   },
 
-  async checkVerification(verificationId: string): Promise<{ status: string }> {
+  async checkVerification(verificationId: string): Promise<{ status: string; error?: string }> {
     const res = await fetch(`${BASE_URL}/verify/check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ verification_id: verificationId }),
     });
-    if (!res.ok) throw new Error('Failed to check verification');
-    return res.json();
+    const body = await res.json().catch(() => ({}));
+    // 410 is the backend's expiry response (verification.ts): the challenge is gone, not a
+    // request failure, so it must reach the caller as a result, not a thrown error.
+    if (!res.ok && res.status !== 410)
+      throw new Error(body?.error || 'Failed to check verification');
+    return parseCheckResponse(res.status, body);
   },
 
   async createApi(data: Partial<ApiInfo>): Promise<ApiInfo> {

@@ -7,6 +7,7 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { StatusBadge } from '../common/StatusBadge';
 import { apiClient } from '../../api/client';
+import { validateChallengeResponse } from '../../lib/domainVerification';
 import { Copy, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface DomainVerifyProps {
@@ -34,6 +35,14 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
     try {
       setLoading(true);
       const res = await apiClient.initiateVerification(domain);
+      // A partial or malformed response must never show DNS instructions or enter PENDING —
+      // and never fall back to the raw domain as the record name (see DECISIONS.md).
+      const check = validateChallengeResponse(res);
+      if (!check.ok) {
+        setErrorMessage(check.error);
+        setLoading(false);
+        return;
+      }
       setChallenge(res.record.value);
       setRecordName(res.record.name);
       setVerificationId(res.id);
@@ -66,6 +75,20 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
       if (res.status === 'VERIFIED') {
         setStatus('VERIFIED');
         updateData({ domainVerified: true });
+      } else if (res.status === 'EXPIRED') {
+        // The backend expires a challenge 30 minutes after /verify/initiate (410). Re-initiate
+        // to get a fresh id, challenge and record — the publisher must update the TXT record
+        // to the new value, the old one no longer verifies anything.
+        setChallenge('');
+        setRecordName('');
+        setVerificationId('');
+        setErrorMessage(
+          'This verification challenge expired after 30 minutes. Requesting a new one — ' +
+            'update your DNS TXT record with the new value below, then check again.',
+        );
+        setVerifying(false);
+        void initiateVerification();
+        return;
       } else {
         setStatus('FAILED');
         setErrorMessage('Verification not completed yet. Please try again.');
@@ -108,16 +131,18 @@ const DomainVerify: React.FC<DomainVerifyProps> = ({ data, updateData, onNext, o
                   <AlertTriangle size={18} /> Instructions
                 </h4>
                 <p className="text-sm text-muted mb-4">
-                  To verify you own this domain, add the following DNS TXT record with your
-                  domain registrar or DNS provider. DNS changes can take a few minutes to
-                  propagate — if the check below fails right away, wait a bit and try again.
+                  To verify you own this domain, add the following DNS TXT record with your domain
+                  registrar or DNS provider. DNS changes can take a few minutes to propagate — if
+                  the check below fails right away, wait a bit and try again.
                 </p>
 
                 <div className="mb-2 text-sm text-main font-medium">Record type: TXT</div>
 
                 <div className="mb-2 text-sm text-main font-medium">Host / name:</div>
                 <pre className="mb-4">
-                  <code>{recordName || domain}</code>
+                  {/* Never the raw domain: recordName is only ever set once the response has
+                      passed validateChallengeResponse, so it is always a bare hostname. */}
+                  <code>{recordName || 'Generating record...'}</code>
                 </pre>
 
                 <div className="mb-2 text-sm text-main font-medium">Value:</div>

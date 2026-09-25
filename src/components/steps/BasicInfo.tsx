@@ -8,6 +8,7 @@ import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { apiClient, setPublisherId } from '../../api/client';
+import { toHostname } from '../../lib/domainVerification';
 
 interface BasicInfoProps {
   data: OnboardingData;
@@ -23,13 +24,11 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
     if (!data.publisherName) newErrors.publisherName = 'Publisher name is required';
     if (!data.domain) {
       newErrors.domain = 'Domain is required';
-    } else {
-      // Strip protocol and path to validate the hostname
-      const hostname = data.domain.replace(/^https?:\/\//, '').split('/')[0];
-      if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(hostname)) {
-        newErrors.domain =
-          'Invalid domain format (e.g. api.example.com or https://api.example.com/v1)';
-      }
+    } else if (!toHostname(data.domain)) {
+      // toHostname strips protocol, path, port and query to derive the hostname — the same
+      // bare-hostname shape the verification step's TXT record name must be (DomainVerify.tsx).
+      newErrors.domain =
+        'Invalid domain format (e.g. api.example.com or https://api.example.com/v1)';
     }
     if (!data.email) {
       newErrors.email = 'Email is required';
@@ -58,6 +57,11 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
 
   const handleContinue = async () => {
     if (validate()) {
+      // validate() already confirmed this is non-null; re-derive so the same hostname that was
+      // validated is what gets registered and carried into the verification step (never the raw
+      // input, which may still have a scheme, path or port).
+      const hostname = toHostname(data.domain || '');
+      if (!hostname) return;
       setLoading(true);
       setError('');
       try {
@@ -66,7 +70,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
           email: data.email,
           type: data.type || 'Company',
           website: data.website || '',
-          domain: data.domain,
+          domain: hostname,
           description: data.description,
           logoUrl: data.logoUrl,
           githubUrl: data.githubUrl,
@@ -78,7 +82,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({ data, updateData, onNext }) => {
         if (!result?.id || typeof result.id !== 'string') {
           throw new Error('The server did not return a valid publisher ID');
         }
-        updateData({ publisherId: result.id });
+        updateData({ publisherId: result.id, domain: hostname });
         setPublisherId(result.id);
         onNext();
       } catch (err) {
